@@ -21,6 +21,7 @@ import { ListPage } from '@/pages/list-page';
 import { ItemPage } from '@/pages/item-page';
 import { CapturePage } from '@/pages/capture-page';
 import { ClarifyPage } from '@/pages/clarify-page';
+import { CalendarPage } from '@/pages/calendar-page';
 
 export function createRoutes(): RouteObject[] {
   return [
@@ -52,10 +53,7 @@ export function createRoutes(): RouteObject[] {
         { path: '/clarify', element: <ClarifyPage /> },
         { path: '/list/:container', element: <ListPage /> },
         { path: '/item/:id', element: <ItemPage /> },
-        {
-          path: '/calendar',
-          element: <ComingSoon title="Calendar" feature="Week and month grid" />,
-        },
+        { path: '/calendar', element: <CalendarPage /> },
         { path: '/projects', element: <ComingSoon title="Projects" feature="Project review" /> },
         { path: '/review', element: <ComingSoon title="Weekly Review" feature="Guided review" /> },
         { path: '/archive', element: <ComingSoon title="Archive" feature="Completed browser" /> },
