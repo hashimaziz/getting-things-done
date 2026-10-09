@@ -6,6 +6,7 @@ import { registerMetricsRoutes } from './metrics.js';
 import { registerReferenceRoutes } from './reference.js';
 import { registerReviewRoutes } from './review.js';
 import { registerRecurrenceRoutes } from './recurrence.js';
+import { registerRecommendationRoutes } from './recommendations.js';
 import { registerSettingsRoutes } from './settings.js';
 
 export function registerRoutes(app: FastifyInstance): void {
@@ -15,6 +16,7 @@ export function registerRoutes(app: FastifyInstance): void {
   registerItemRoutes(app);
   registerMetricsRoutes(app);
   registerRecurrenceRoutes(app);
+  registerRecommendationRoutes(app);
   registerReferenceRoutes(app);
   registerReviewRoutes(app);
 }
@@ -27,4 +29,5 @@ export { registerReferenceRoutes } from './reference.js';
 export { registerReviewRoutes } from './review.js';
 export { expandItem, toFieldValues, type ExpandedItem } from './item-helpers.js';
 export { registerRecurrenceRoutes } from './recurrence.js';
+export { registerRecommendationRoutes } from './recommendations.js';
 export { registerSettingsRoutes } from './settings.js';
