@@ -603,6 +603,31 @@ export function toFloatingRRule(spec: RecurrenceSpec): RRule {
   });
 }
 
+/**
+ * Injects a DTSTART into a rule that lacks one.
+ *
+ * The iCalendar format requires a DTSTART, because without one "every Monday" has
+ * no defined phase. A person picking "every 2 weeks" should not have to think
+ * about what anchors it, so callers supply the start they already have.
+ *
+ * Shared by the service that stores rules and the endpoint that previews them, so
+ * both agree on what a bare `FREQ=WEEKLY` means.
+ */
+export function withRecurrenceDtstart(
+  rrule: string,
+  anchorDate: IsoDate,
+  timezone: string,
+): string {
+  if (/^\s*DTSTART/im.test(rrule)) {
+    return rrule;
+  }
+  if (!isIsoDate(anchorDate)) {
+    throw new InvalidRecurrenceError(`"${anchorDate}" is not a calendar date in YYYY-MM-DD`);
+  }
+  const body = rrule.replace(/^\s*RRULE:/i, '').trim();
+  return `${buildDtstart(anchorDate, null, timezone)}\nRRULE:${body}`;
+}
+
 function isoToWallClock(day: IsoDate): Omit<WallClock, 'hour' | 'minute' | 'second'> {
   const parsed = parseIsoDate(day);
   if (!parsed) {

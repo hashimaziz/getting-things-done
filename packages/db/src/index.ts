@@ -47,5 +47,16 @@ export {
   type MigrationReport,
 } from './migrate.js';
 export { ensureDataDir, resolvePaths, type ResolveOptions, type ResolvedPaths } from './paths.js';
+export {
+  DEFAULT_HORIZON_DAYS,
+  MAX_OCCURRENCES_PER_RUN,
+  createRecurrenceService,
+  type AttachSeriesInput,
+  type CompleteOccurrenceResult,
+  type MaterializeOptions,
+  type MaterializeResult,
+  type RecurrenceService,
+  type RecurrenceServiceOptions,
+} from './recurrence-service.js';
 export * from './repositories/index.js';
 export { LATEST_MIGRATION_ID, MIGRATIONS, type Migration } from './schema/migrations.js';

@@ -115,8 +115,9 @@ export class ConstraintViolationError extends Error {
 /**
  * Reads the column list from a driver message.
  *
- * Only used to choose among several declared unique columns. The decision that a
- * violation happened, and of what kind, comes from `errcode`.
+ * Only meaningful for UNIQUE and CHECK violations, which name their columns. A
+ * foreign-key violation says only "FOREIGN KEY constraint failed", with no
+ * indication of which relationship failed.
  */
 function columnsFromMessage(error: unknown): string[] {
   const message = error instanceof Error ? error.message : '';
@@ -130,6 +131,7 @@ function columnsFromMessage(error: unknown): string[] {
   });
 }
 
+/** Chooses the declared column a violation refers to, or null if undecidable. */
 function pickColumn(
   declared: Record<string, string> | undefined,
   error: unknown,
@@ -148,7 +150,15 @@ function pickColumn(
   }
   const violated = columnsFromMessage(error);
   const hit = entries.find(([column]) => violated.includes(column));
-  return hit ? { column: hit[0], label: hit[1] } : { column: first[0], label: first[1] };
+  return hit ? { column: hit[0], label: hit[1] } : null;
+}
+
+/** `a`, `a or b`, `a, b or c`, for a message naming several possibilities. */
+function joinList(labels: string[]): string {
+  if (labels.length <= 1) {
+    return labels[0] ?? 'value';
+  }
+  return `${labels.slice(0, -1).join(', ')} or ${labels[labels.length - 1]}`;
 }
 
 /**
@@ -174,9 +184,17 @@ export function translating<T>(context: WriteContext, run: () => T): T {
     }
 
     if (kind === 'foreign_key') {
-      const reference = pickColumn(context.references, error);
-      if (reference) {
-        throw new InvalidReferenceError(context.entity, reference.column, reference.label);
+      // A foreign-key message names no column, so when several relationships are
+      // declared it is genuinely undecidable which one failed. Guessing would
+      // confidently name the wrong field, so all the candidates are named
+      // instead and the caller is told one of them is wrong.
+      const declared = Object.values(context.references ?? {});
+      if (declared.length === 1) {
+        const column = Object.keys(context.references ?? {})[0] as string;
+        throw new InvalidReferenceError(context.entity, column, declared[0] as string);
+      }
+      if (declared.length > 1) {
+        throw new InvalidReferenceError(context.entity, 'reference', joinList(declared));
       }
     }
 

@@ -7,7 +7,7 @@
  * without going through HTTP.
  */
 
-import { APP_CONFIG } from '@gtd/core';
+import { APP_CONFIG, type IsoDate } from '@gtd/core';
 import { createRepositories, reconcileFieldIndexes, type Db, type Repositories } from '@gtd/db';
 import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -24,6 +24,15 @@ export interface BuildAppOptions {
    * startup. On by default, off in tests that do not care.
    */
   reconcileIndexes?: boolean;
+  /**
+   * What "today" means.
+   *
+   * Injected rather than read from the clock inside each caller, because
+   * recurrence materialisation is the one behaviour whose output depends on the
+   * current date, and a test that asserts on generated dates is worthless without
+   * a way to pin it.
+   */
+  now?: () => IsoDate;
 }
 
 declare module 'fastify' {
@@ -31,6 +40,8 @@ declare module 'fastify' {
     /** Repositories, available to every route without threading them through. */
     repos: Repositories;
     db: Db;
+    /** The host's notion of today, injectable for deterministic tests. */
+    today: () => IsoDate;
   }
 }
 
@@ -54,6 +65,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   app.decorate('db', options.db);
   app.decorate('repos', repos);
+  app.decorate('today', options.now ?? (() => new Date().toISOString().slice(0, 10) as IsoDate));
 
   app.setErrorHandler((error, request, reply) => {
     return sendError(error, request, reply);

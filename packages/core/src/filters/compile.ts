@@ -430,6 +430,19 @@ export function resolveOffset(offset: number | undefined): number {
   return Math.floor(offset);
 }
 
+/**
+ * A caller-supplied SQL predicate to AND in before the caller's filter.
+ *
+ * Used for scoping a query to a subset the AST cannot express, such as "exclude
+ * recurring series templates". The SQL is written by repository code against a
+ * known table, never by a client, so it is not an injection vector; callers must
+ * still bind any values through `params`.
+ */
+export interface SqlGuard {
+  sql: string;
+  params?: BindValue[];
+}
+
 export interface CompiledQuery {
   /**
    * A complete trailing clause, ready to concatenate after a `FROM items`.
@@ -442,36 +455,64 @@ export interface CompiledQuery {
    * Always non-empty, since ORDER BY always contributes at least a tiebreaker.
    */
   clause: string;
-  /** Bind values, in the same order as the placeholders in `clause`. */
+  /** Bind values for `clause`, in placeholder order. */
   params: BindValue[];
+  /** The `WHERE` fragment on its own, including the keyword. */
+  whereSql: string;
+  /** Bind values for `whereSql`, in placeholder order. */
+  whereParams: BindValue[];
 }
 
 /**
  * Compiles a whole query specification into a trailing SQL clause.
  *
  * Used as `SELECT ... FROM items ${compiled.clause}` with `compiled.params`
- * spread into the call.
+ * spread into the call. The `whereSql`/`whereParams` pair is exposed so a caller
+ * can run a COUNT over exactly the same rows, which is what stops a paged result
+ * and its total disagreeing.
  */
-export function compileQuery(spec: QuerySpec, resolver: FieldResolver): CompiledQuery {
+export function compileQuery(
+  spec: QuerySpec,
+  resolver: FieldResolver,
+  guards: SqlGuard[] = [],
+): CompiledQuery {
   const where = compileFilter(spec.filter, resolver);
   const orderBy = compileSort(spec.sort, resolver);
   const limit = resolvePageSize(spec.limit);
   const offset = resolveOffset(spec.offset);
 
-  const parts = [where.sql === '' ? 'WHERE 1 = 1' : `WHERE ${where.sql}`, `ORDER BY ${orderBy}`];
-  const params = [...where.params];
+  // Guard parameters bind first, matching the order the guards appear in.
+  const guardParams: BindValue[] = [];
+  const predicates = guards.map((guard) => {
+    for (const value of guard.params ?? []) {
+      guardParams.push(value);
+    }
+    return `(${guard.sql})`;
+  });
+
+  if (where.sql !== '') {
+    predicates.push(`(${where.sql})`);
+  }
+  if (predicates.length === 0) {
+    predicates.push('1 = 1');
+  }
+
+  const whereSql = `WHERE ${predicates.join(' AND ')}`;
+  const whereParams = [...guardParams, ...where.params];
+
+  const parts = [whereSql, `ORDER BY ${orderBy}`];
 
   // SQLite requires LIMIT before OFFSET. Both are bound, so a limit is never
   // spliced in as a literal.
   parts.push('LIMIT ?');
-  params.push(limit);
 
+  const params = [...whereParams, limit];
   if (offset > 0) {
     parts.push('OFFSET ?');
     params.push(offset);
   }
 
-  return { clause: parts.join(' '), params };
+  return { clause: parts.join(' '), params, whereSql, whereParams };
 }
 
 export interface ItemFieldResolverOptions {

@@ -410,7 +410,10 @@ describe('error handling', () => {
     });
     expect(response.statusCode).toBe(422);
     expect(response.json().error.code).toBe('invalid_reference');
-    expect(response.json().error.message).toBe('That category does not exist.');
+    // An item references a category, a project, a person and a series, and SQLite
+    // names none of them, so all four candidates are named rather than guessing.
+    expect(response.json().error.message).toContain('category');
+    expect(response.json().error.message).toContain('or');
   });
 });
 

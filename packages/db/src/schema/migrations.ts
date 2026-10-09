@@ -250,6 +250,32 @@ export const MIGRATIONS: readonly Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    id: 3,
+    name: 'recurring_series',
+    sql: /* sql */ `
+      -- A recurring item is stored twice over: the parent row is the series
+      -- definition, and each occurrence is its own row so it can be completed,
+      -- deferred or annotated independently.
+      --
+      -- is_template marks the parent. Without it the parent would appear in every
+      -- list alongside its own occurrences, which is both confusing and double
+      -- counted in the analytics.
+      ALTER TABLE items ADD COLUMN is_template
+        INTEGER NOT NULL DEFAULT 0 CHECK (is_template IN (0, 1));
+
+      -- Partial, because template rows are a tiny minority and the overwhelmingly
+      -- common query is "give me everything that is not a template".
+      CREATE INDEX idx_items_not_template ON items(container) WHERE is_template = 0;
+
+      -- The invariant that stops the same occurrence being created twice. Without
+      -- it, two concurrent materialisations both see the date as missing and
+      -- produce duplicate tasks. SQLite treats NULLs as distinct in unique
+      -- indexes, so the WHERE clause is what confines this to occurrences.
+      CREATE UNIQUE INDEX idx_items_occurrence
+        ON items(parent_item_id, occurrence_date) WHERE parent_item_id IS NOT NULL;
+    `,
+  },
 ];
 
 export const LATEST_MIGRATION_ID = MIGRATIONS.reduce(

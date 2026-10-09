@@ -184,6 +184,13 @@ export interface Item {
   /** Set on a materialised occurrence of a recurring series. */
   parentItemId: string | null;
   occurrenceDate: IsoDate | null;
+  /**
+   * True when this row is a recurring series definition rather than a task.
+   *
+   * A template is excluded from every list and every count. It exists to carry
+   * the rule and the fields that new occurrences inherit.
+   */
+  isTemplate: boolean;
   /** User-defined field values, keyed by field definition key. */
   data: Record<string, FieldValue>;
   sortOrder: number;
@@ -208,6 +215,7 @@ export interface CreateItemInput {
   recurrenceId?: string | null;
   parentItemId?: string | null;
   occurrenceDate?: IsoDate | null;
+  isTemplate?: boolean;
   data?: Record<string, FieldValue>;
   sortOrder?: number;
 }

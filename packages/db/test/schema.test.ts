@@ -92,6 +92,7 @@ describe('migrate', () => {
       'activity_log',
       'settings',
       'field_indexes',
+      'schema_migrations',
     ]) {
       expect(hasTable(db, table)).toBe(true);
     }
@@ -116,7 +117,7 @@ describe('migrate', () => {
   it('applies only pending migrations when new ones are added', () => {
     migrate(db, [MIGRATIONS[0]!]);
     const report = migrate(db);
-    expect(report.applied).toEqual([2]);
+    expect(report.applied).toEqual(MIGRATIONS.slice(1).map((migration) => migration.id));
     expect(report.alreadyApplied).toEqual([1]);
   });
 

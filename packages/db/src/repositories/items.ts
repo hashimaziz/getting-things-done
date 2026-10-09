@@ -13,7 +13,6 @@
 import {
   assertContainerInvariants,
   checkTransition,
-  compileFilter,
   compileQuery,
   inferContainer,
   newId,
@@ -32,7 +31,7 @@ import {
 } from '@gtd/core';
 import type { Db } from '../driver.js';
 import { translating } from '../errors.js';
-import { readJson, writeJson } from '../json.js';
+import { readJson, toBool, writeJson } from '../json.js';
 
 /**
  * Constraints an item write depends on.
@@ -67,6 +66,7 @@ interface ItemRow {
   recurrence_id: string | null;
   parent_item_id: string | null;
   occurrence_date: string | null;
+  is_template: number;
   data_json: string;
   sort_order: number;
   created_at: string;
@@ -75,10 +75,17 @@ interface ItemRow {
   trashed_at: string | null;
 }
 
+/**
+ * The read column list.
+ *
+ * `is_template` is last because it was added by a later migration; keeping the
+ * order stable means every SELECT here stays in step with the one in the
+ * materializer.
+ */
 const COLUMNS = `id, category_id, title, container, notes, when_at, deadline_on, estimate_min,
   project_id, waiting_on_person_id, follow_up_at, contexts_json, recurrence_id,
   parent_item_id, occurrence_date, data_json, sort_order, created_at, updated_at,
-  completed_at, trashed_at`;
+  completed_at, trashed_at, is_template`;
 
 function toItem(row: ItemRow): Item {
   return {
@@ -97,6 +104,7 @@ function toItem(row: ItemRow): Item {
     recurrenceId: row.recurrence_id,
     parentItemId: row.parent_item_id,
     occurrenceDate: row.occurrence_date,
+    isTemplate: toBool(row.is_template),
     data: readJson<Record<string, FieldValue>>(row.data_json, {}),
     sortOrder: row.sort_order,
     createdAt: row.created_at,
@@ -141,11 +149,26 @@ export interface ItemsRepo {
   getById(id: string): Item | null;
   listByContainer(container: Item['container']): Item[];
   listAll(): Item[];
+  /** Every recurring series definition. The only way to reach a template row. */
+  listTemplates(): Item[];
+  /** The materialised occurrences of a series, oldest first. */
+  occurrencesOf(parentItemId: string): Item[];
+  /** Occurrence dates already materialised for a series, for de-duplication. */
+  occurrenceDatesOf(parentItemId: string): string[];
   countByContainer(): Record<string, number>;
   query(params: QueryItemsParams): QueryItemsResult;
   create(input: CreateItemInput): Item;
   update(id: string, patch: UpdateItemPatch, verb?: ActivityVerb): Item;
   setContainer(id: string, container: Item['container']): Item;
+  /**
+   * Marks or unmarks an item as a recurring series definition.
+   *
+   * Templates are excluded from every list and count, so this is what takes a
+   * series definition out of circulation once it has occurrences.
+   */
+  setTemplateFlag(id: string, isTemplate: boolean): Item;
+  /** Deletes every materialised occurrence of a series. */
+  deleteOccurrencesOf(parentItemId: string): number;
   setData(id: string, data: Record<string, FieldValue>): Item;
   complete(id: string): Item;
   reopen(id: string): Item;
@@ -233,7 +256,8 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
     listByContainer(container: Item['container']): Item[] {
       return db
         .all<ItemRow>(
-          `SELECT ${COLUMNS} FROM items WHERE container = ? ORDER BY sort_order, created_at`,
+          `SELECT ${COLUMNS} FROM items WHERE container = ? AND is_template = 0
+           ORDER BY sort_order, created_at`,
           container,
         )
         .map(toItem)
@@ -247,9 +271,50 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
         .map(checkInvariants);
     },
 
+    /**
+     * Every recurring series definition.
+     *
+     * Templates are excluded from every other read, so this and getById are the
+     * only ways to reach one.
+     */
+    listTemplates(): Item[] {
+      return db
+        .all<ItemRow>(`SELECT ${COLUMNS} FROM items WHERE is_template = 1 ORDER BY created_at`)
+        .map(toItem);
+    },
+
+    /** The materialised occurrences of a series, oldest first. */
+    occurrencesOf(parentItemId: string): Item[] {
+      return db
+        .all<ItemRow>(
+          `SELECT ${COLUMNS} FROM items WHERE parent_item_id = ?
+           ORDER BY occurrence_date, created_at`,
+          parentItemId,
+        )
+        .map(toItem);
+    },
+
+    /**
+     * Occurrence dates already materialised for a series, for de-duplication.
+     *
+     * Trashed occurrences are included on purpose. Trashing an occurrence means
+     * "not this time", so recreating it would undo the user's decision. The
+     * unique index on (parent, date) agrees, and backs this up: it covers trashed
+     * rows too, so a trashed occurrence cannot be recreated even by accident.
+     */
+    occurrenceDatesOf(parentItemId: string): string[] {
+      return db
+        .all<{ occurrence_date: string }>(
+          `SELECT DISTINCT occurrence_date FROM items
+           WHERE parent_item_id = ? AND occurrence_date IS NOT NULL`,
+          parentItemId,
+        )
+        .map((row) => row.occurrence_date);
+    },
+
     countByContainer(): Record<string, number> {
       const rows = db.all<{ container: string; count: number }>(
-        'SELECT container, count(*) AS count FROM items GROUP BY container',
+        'SELECT container, count(*) AS count FROM items WHERE is_template = 0 GROUP BY container',
       );
       return Object.fromEntries(rows.map((row) => [row.container, row.count]));
     },
@@ -261,20 +326,22 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
         ...(params.limit === undefined ? {} : { limit: params.limit }),
         ...(params.offset === undefined ? {} : { offset: params.offset }),
       };
-      const compiled = compileQuery(spec, params.resolver);
+
+      // Scoped so a series definition never appears in a list or a count. Passed
+      // as a guard rather than spliced into the compiled text, so the WHERE the
+      // COUNT reuses is literally the same string as the one the page used.
+      const compiled = compileQuery(spec, params.resolver, [{ sql: 'is_template = 0' }]);
 
       const rows = db
         .all<ItemRow>(`SELECT ${COLUMNS} FROM items ${compiled.clause}`, ...compiled.params)
         .map(toItem)
         .map(checkInvariants);
 
-      // The total is a separate COUNT rather than window arithmetic, and reuses
-      // the *same* compiled WHERE so the two cannot disagree about what matched.
-      const where = compileFilter(params.filter, params.resolver);
-      const countSql = where.sql === '' ? 'WHERE 1 = 1' : `WHERE ${where.sql}`;
+      // The total reuses the exact WHERE and parameters, so a paged result and its
+      // total can never disagree about what matched.
       const count = db.get<{ total: number }>(
-        `SELECT count(*) AS total FROM items ${countSql}`,
-        ...where.params,
+        `SELECT count(*) AS total FROM items ${compiled.whereSql}`,
+        ...compiled.whereParams,
       );
 
       return { items: rows, total: count?.total ?? rows.length };
@@ -306,6 +373,7 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
         recurrence_id: input.recurrenceId ?? null,
         parent_item_id: input.parentItemId ?? null,
         occurrence_date: input.occurrenceDate ?? null,
+        is_template: input.isTemplate === true ? 1 : 0,
         data_json: writeJson(input.data ?? {}),
         sort_order: input.sortOrder ?? 0,
         created_at: timestamp,
@@ -316,7 +384,7 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
 
       translating(WRITE_CONTEXT, () =>
         db.run(
-          `INSERT INTO items (${COLUMNS.replace(/\s+/g, ' ')}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO items (${COLUMNS.replace(/\s+/g, ' ')}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           row.id,
           row.category_id,
           row.title,
@@ -338,6 +406,9 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
           row.updated_at,
           row.completed_at,
           row.trashed_at,
+          // is_template is the last column in COLUMNS, so it is the last
+          // parameter. Order here must match the column list exactly.
+          row.is_template,
         ),
       );
 
@@ -413,6 +484,26 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
 
     setContainer(id: string, container: Item['container']): Item {
       return repo.update(id, { container }, 'moved');
+    },
+
+    setTemplateFlag(id: string, isTemplate: boolean): Item {
+      const row = require(id);
+      translating(WRITE_CONTEXT, () =>
+        db.run(
+          'UPDATE items SET is_template = ?, updated_at = ? WHERE id = ?',
+          isTemplate ? 1 : 0,
+          now(),
+          id,
+        ),
+      );
+      log(id, 'updated', { isTemplate: toBool(row.is_template) }, { isTemplate });
+      return checkInvariants(toItem(require(id)));
+    },
+
+    deleteOccurrencesOf(parentItemId: string): number {
+      return translating(WRITE_CONTEXT, () =>
+        db.run('DELETE FROM items WHERE parent_item_id = ?', parentItemId),
+      ).changes;
     },
 
     setData(id: string, data: Record<string, FieldValue>): Item {

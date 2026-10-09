@@ -14,7 +14,6 @@ import {
   FIELD_TYPES,
   applyFieldDefaults,
   createItemFieldResolver,
-  emptyValueFor,
   resolveDefinitionsForCategory,
   validateFieldValues,
   type CreateItemInput,
@@ -30,6 +29,7 @@ import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { compact } from '../utils/compact.js';
 import { BadRequestError } from '../http-errors.js';
+import { expandItem } from './item-helpers.js';
 
 /**
  * A container name, typed as the domain union rather than `string`, so a parsed
@@ -114,18 +114,6 @@ function resolveData(
   }
 
   return applyingDefaults ? applyFieldDefaults(definitions, result.values) : result.values;
-}
-
-/** Expands an item into its stored form plus every applicable field definition. */
-function expandItem(item: Item, definitions: readonly FieldDefinition[]) {
-  const values: Record<string, FieldValue> = {};
-  for (const definition of definitions) {
-    values[definition.key] =
-      item.data[definition.key] ??
-      (definition.defaultValue as FieldValue) ??
-      emptyValueFor(definition.type);
-  }
-  return { ...item, values };
 }
 
 export function registerItemRoutes(app: FastifyInstance): void {
