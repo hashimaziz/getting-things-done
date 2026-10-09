@@ -20,12 +20,13 @@ export function renderApp(
 ): RenderResult & { user: ReturnType<typeof userEvent.setup> } {
   const router = createMemoryRouter(createRoutes(), { initialEntries: [initialPath] });
 
-  // A query client with no retries and no caching: retries in a test turn a
-  // deterministic failure into a timeout, and a shared cache lets one test's data
-  // satisfy another test's query.
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
-  });
+  // Retries off, because in a test a retry turns a deterministic failure into a
+  // timeout. Garbage collection left at its default, deliberately: `gcTime: 0` looks
+  // like a way to isolate tests, but a failed query is collected the instant it
+  // errors, so the next render finds no cache entry, refetches, errors again, and
+  // the screen never settles. A client per render already isolates tests, because
+  // no two renders share a cache.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   const result = render(
     <QueryClientProvider client={queryClient}>
@@ -40,9 +41,7 @@ export function renderApp(
 
 /** Renders a component with the same providers, for testing one piece. */
 export function renderWithProviders(ui: ReactElement) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },
-  });
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   return {
     ...render(

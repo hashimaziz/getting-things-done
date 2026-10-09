@@ -19,9 +19,33 @@ function baseRoutes(health: Record<string, unknown> = {}) {
   ];
 }
 
+/**
+ * Setup is complete for every shell test.
+ *
+ * The shell sits behind the setup gate, and the gate reads `/api/status`. Without
+ * this, every shell test would be measuring the gate: it would redirect to the
+ * wizard and there would be no navigation to find. The gate has its own tests.
+ */
+const STATUS_SET_UP = {
+  path: '/api/status',
+  body: { app: 'GTD', version: 1, setupCompleted: true },
+};
+
+/**
+ * Waits for the shell to appear.
+ *
+ * The shell sits behind the setup gate, which is an async answer, so nothing is on
+ * screen synchronously after render. Every lookup below therefore has to be an
+ * awaited one — a synchronous `getByRole` fails here in a way that looks like a
+ * missing link rather than a missing wait.
+ */
+async function findNavLink(name: string | RegExp): Promise<HTMLElement> {
+  return screen.findByRole('link', { name });
+}
+
 describe('the shell', () => {
   it('renders the navigation', async () => {
-    stubFetch(baseRoutes());
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
 
     renderApp('/dashboard');
 
@@ -33,10 +57,10 @@ describe('the shell', () => {
   });
 
   it('navigates when a container is clicked', async () => {
-    stubFetch(baseRoutes());
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
     const { user } = renderApp('/dashboard');
 
-    await user.click(screen.getByRole('link', { name: /Inbox/ }));
+    await user.click(await findNavLink(/Inbox/));
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Inbox' })).toBeInTheDocument();
@@ -44,13 +68,12 @@ describe('the shell', () => {
   });
 
   it('marks the current destination as active', async () => {
-    stubFetch(baseRoutes());
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
     const { user } = renderApp('/dashboard');
 
-    const dashboard = screen.getByRole('link', { name: 'Dashboard' });
-    expect(dashboard).toHaveAttribute('aria-current', 'page');
+    expect(await findNavLink('Dashboard')).toHaveAttribute('aria-current', 'page');
 
-    await user.click(screen.getByRole('link', { name: /Inbox/ }));
+    await user.click(await findNavLink(/Inbox/));
 
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /Inbox/ })).toHaveAttribute('aria-current', 'page');
@@ -59,12 +82,12 @@ describe('the shell', () => {
   });
 
   it('keeps the parent row inactive on a settings sub-page', async () => {
-    stubFetch([...baseRoutes(), { path: '/api/settings/categories', body: {} }]);
+    stubFetch([STATUS_SET_UP, ...baseRoutes(), { path: '/api/settings/categories', body: {} }]);
 
     // `/settings` is a prefix of `/settings/categories`, so without an exact match
     // both rows highlight at once.
     const { user } = renderApp('/settings');
-    await user.click(screen.getByRole('link', { name: 'Categories' }));
+    await user.click(await findNavLink('Categories'));
 
     await waitFor(() => {
       expect(screen.getByRole('link', { name: 'Categories' })).toHaveAttribute(
@@ -76,13 +99,13 @@ describe('the shell', () => {
   });
 
   it('surfaces the overdue count only when there is one', async () => {
-    stubFetch(baseRoutes({ overdue: 3 }));
+    stubFetch([STATUS_SET_UP, ...baseRoutes({ overdue: 3 })]);
     const { unmount } = renderApp('/dashboard');
 
     expect(await screen.findByText('3 overdue')).toBeInTheDocument();
     unmount();
 
-    stubFetch(baseRoutes({ overdue: 0 }));
+    stubFetch([STATUS_SET_UP, ...baseRoutes({ overdue: 0 })]);
     renderApp('/dashboard');
     await waitFor(() => {
       expect(screen.queryByText(/overdue/)).not.toBeInTheDocument();
@@ -90,7 +113,7 @@ describe('the shell', () => {
   });
 
   it('shows container counts from health rather than separate queries', async () => {
-    const stub = stubFetch(baseRoutes({ inboxBacklog: 7, waiting: 2 }));
+    const stub = stubFetch([STATUS_SET_UP, ...baseRoutes({ inboxBacklog: 7, waiting: 2 })]);
     renderApp('/dashboard');
 
     await waitFor(() => {
@@ -103,7 +126,7 @@ describe('the shell', () => {
   });
 
   it('sets the document title from the route', async () => {
-    stubFetch(baseRoutes());
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
     renderApp('/list/waiting');
 
     await waitFor(() => {
@@ -112,27 +135,28 @@ describe('the shell', () => {
   });
 
   it('cycles the theme through system, light and dark, and remembers each choice', async () => {
-    stubFetch(baseRoutes());
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
     const { user } = renderApp('/dashboard');
 
     // The first state is `system`, so a fresh user following an OS that wants dark
     // sees dark already. One click from there is an explicit light, and the next is
     // dark. The cycle is asserted rather than a single click, so the order is part
     // of the contract instead of an accident.
-    expect(screen.getByRole('button', { name: /Switch to dark theme/ })).toBeInTheDocument();
+    const first = await screen.findByRole('button', { name: /Switch to dark theme/ });
+    expect(first).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Switch to/ }));
+    await user.click(first);
     expect(localStorage.getItem('gtd.theme')).toBe('light');
     expect(document.documentElement.classList.contains('dark')).toBe(false);
 
-    await user.click(screen.getByRole('button', { name: /Switch to/ }));
+    await user.click(await screen.findByRole('button', { name: /Switch to/ }));
     expect(localStorage.getItem('gtd.theme')).toBe('dark');
     expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
 
   it('applies a stored theme before anything is clicked', async () => {
     localStorage.setItem('gtd.theme', 'dark');
-    stubFetch(baseRoutes());
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
     renderApp('/dashboard');
 
     await waitFor(() => {
@@ -141,7 +165,7 @@ describe('the shell', () => {
   });
 
   it('renders a not-found page that says where to go', async () => {
-    stubFetch(baseRoutes());
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
     renderApp('/nowhere-at-all');
 
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
@@ -149,7 +173,7 @@ describe('the shell', () => {
   });
 
   it('routes every navigation destination somewhere', async () => {
-    const stub = stubFetch(baseRoutes());
+    const stub = stubFetch([STATUS_SET_UP, ...baseRoutes()]);
     renderApp('/nowhere-at-all');
 
     // The not-found page itself renders, so the router matched the catch-all rather

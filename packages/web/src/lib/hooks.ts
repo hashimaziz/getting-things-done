@@ -7,7 +7,7 @@
  * dashboard tile must never disagree because they were fetched under different keys.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { apiFetch } from './api';
 import { keys } from './query-keys';
 import type {
@@ -69,12 +69,38 @@ export interface AppStatus {
 /**
  * Whether first-run setup has happened. The app shell redirects to the wizard
  * when it has not, so this is fetched before any other data.
+ *
+ * The three `false`s are a bug fix, not preferences, and they were found the hard
+ * way. With the server unreachable this query was fetched roughly 2,900 times a
+ * second, forever. The loop:
+ *
+ *   1. The query errors. React Query treats an errored query as worth retrying on
+ *      mount (`retryOnMount`, default true), independently of `retry`.
+ *   2. The gate redirects to the wizard, and the wizard asks for the same query.
+ *   3. Asking again refetches, so the answer is pending again.
+ *   4. The gate shows its waiting state while pending, which unmounts the wizard.
+ *   5. The settled answer remounts the wizard, which asks again. Back to 3.
+ *
+ * A local server that cannot answer one query is exactly when the app should do
+ * the least work possible, so both mount-time refetch triggers are off. The
+ * consequence is that a stale answer can persist for `staleTime`; that is the right
+ * trade for a value which only changes when the wizard finishes, and finishing
+ * invalidates it explicitly.
  */
 export function useStatus() {
   return useQuery({
     queryKey: keys.setupStatus,
     queryFn: () => apiFetch.get<AppStatus>('/status'),
+    retry: false,
+    refetchOnMount: false,
+    staleTime: 60_000,
+    retryOnMount: false,
   });
+}
+
+/** Marks the setup status stale, so the next gate mount asks again. */
+export function invalidateSetupStatus(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({ queryKey: keys.setupStatus });
 }
 
 /** Invariants power the weekly review, so the review flow fetches them. */

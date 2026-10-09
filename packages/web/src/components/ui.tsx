@@ -15,6 +15,7 @@ import {
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type InputHTMLAttributes,
+  type LabelHTMLAttributes,
   type ReactNode,
   type TextareaHTMLAttributes,
 } from 'react';
@@ -158,7 +159,7 @@ export function Badge({ className, variant, ...props }: BadgeProps) {
 
 /* ------------------------------------------------------------------ labels */
 
-export function Label({ className, ...props }: HTMLAttributes<HTMLLabelElement>) {
+export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <label className={cn('text-xs font-medium text-muted-foreground', className)} {...props} />
   );

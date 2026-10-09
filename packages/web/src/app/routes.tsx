@@ -14,6 +14,8 @@ import { useParams, type RouteObject } from 'react-router';
 import { AppShell } from '@/components/layout/app-shell';
 import { ComingSoon } from '@/pages/coming-soon';
 import { NotFound } from '@/pages/not-found';
+import { SetupGate, SetupRedirect } from '@/components/setup-gate';
+import { SetupWizard } from '@/pages/setup-wizard';
 import { containerLabel } from '@/lib/navigation';
 
 /**
@@ -31,11 +33,23 @@ function ContainerPlaceholder() {
 export function createRoutes(): RouteObject[] {
   return [
     {
+      // The wizard and the app guard each other: one refuses to run twice, the
+      // other refuses to run at all until it has. Without both, the only thing
+      // standing between a fresh database and an empty, unusable app is one of
+      // them remembering.
       path: '/setup',
-      element: <ComingSoon title="Setup" feature="First-run setup wizard" />,
+      element: (
+        <SetupRedirect>
+          <SetupWizard />
+        </SetupRedirect>
+      ),
     },
     {
-      element: <AppShell />,
+      element: (
+        <SetupGate>
+          <AppShell />
+        </SetupGate>
+      ),
       children: [
         { index: true, element: <ComingSoon title="Dashboard" feature="Dashboard widgets" /> },
         {
