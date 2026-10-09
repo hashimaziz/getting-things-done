@@ -19,3 +19,11 @@ export {
   type MigrationReport,
 } from './migrate.js';
 export { LATEST_MIGRATION_ID, MIGRATIONS, type Migration } from './schema/migrations.js';
+export { ensureDataDir, resolvePaths, type ResolveOptions, type ResolvedPaths } from './paths.js';
+export {
+  MigrationDriftError,
+  bootstrap,
+  describePaths,
+  type Bootstrapped,
+  type BootstrapOptions,
+} from './bootstrap.js';
