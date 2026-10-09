@@ -23,6 +23,7 @@ import { CapturePage } from '@/pages/capture-page';
 import { ClarifyPage } from '@/pages/clarify-page';
 import { CalendarPage } from '@/pages/calendar-page';
 import { DashboardPage } from '@/pages/dashboard-page';
+import { ReviewPage } from '@/pages/review-page';
 
 export function createRoutes(): RouteObject[] {
   return [
@@ -53,7 +54,7 @@ export function createRoutes(): RouteObject[] {
         { path: '/item/:id', element: <ItemPage /> },
         { path: '/calendar', element: <CalendarPage /> },
         { path: '/projects', element: <ComingSoon title="Projects" feature="Project review" /> },
-        { path: '/review', element: <ComingSoon title="Weekly Review" feature="Guided review" /> },
+        { path: '/review', element: <ReviewPage /> },
         { path: '/archive', element: <ComingSoon title="Archive" feature="Completed browser" /> },
         { path: '/settings', element: <ComingSoon title="Settings" feature="Settings" /> },
         {
