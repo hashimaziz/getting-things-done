@@ -93,7 +93,9 @@ export function createCategoriesRepo(db: Db): CategoriesRepo {
     create(input: CreateCategoryInput): Category {
       const timestamp = nowIso();
       const id = newId();
-      const key = input.key.trim() === '' ? deriveKey(input.name) : input.key.trim();
+      const suppliedKey = input.key?.trim();
+      const key =
+        suppliedKey === undefined || suppliedKey === '' ? deriveKey(input.name) : suppliedKey;
 
       db.run(
         `INSERT INTO categories (id, key, name, description, color, icon, sort_order,

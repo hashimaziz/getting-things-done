@@ -1,0 +1,53 @@
+/**
+ * The repository container.
+ *
+ * One object holding every repository, constructed once from a `Db`. Routes and
+ * the CLI take the container rather than assembling repositories individually, so
+ * a new repository cannot be accidentally constructed against a different
+ * database in the same process.
+ */
+
+import type { Db } from '../driver.js';
+import { createCategoriesRepo, type CategoriesRepo } from './categories.js';
+import {
+  createChecklistTemplatesRepo,
+  createContextsRepo,
+  createPeopleRepo,
+  createRecurrenceRulesRepo,
+  type ChecklistTemplatesRepo,
+  type ContextsRepo,
+  type PeopleRepo,
+  type RecurrenceRulesRepo,
+} from './reference-data.js';
+import { createFieldDefsRepo, type FieldDefsRepo } from './field-defs.js';
+import { createItemsRepo, type ItemsRepo } from './items.js';
+import { createSettingsRepo, type SettingsRepo } from './settings.js';
+
+export interface Repositories {
+  categories: CategoriesRepo;
+  fieldDefs: FieldDefsRepo;
+  items: ItemsRepo;
+  contexts: ContextsRepo;
+  people: PeopleRepo;
+  recurrenceRules: RecurrenceRulesRepo;
+  checklistTemplates: ChecklistTemplatesRepo;
+  settings: SettingsRepo;
+}
+
+export interface CreateRepositoriesOptions {
+  /** Forwarded to the items repo, e.g. a warning sink in tests. */
+  items?: Parameters<typeof createItemsRepo>[1];
+}
+
+export function createRepositories(db: Db, options: CreateRepositoriesOptions = {}): Repositories {
+  return {
+    categories: createCategoriesRepo(db),
+    fieldDefs: createFieldDefsRepo(db),
+    items: createItemsRepo(db, options.items),
+    contexts: createContextsRepo(db),
+    people: createPeopleRepo(db),
+    recurrenceRules: createRecurrenceRulesRepo(db),
+    checklistTemplates: createChecklistTemplatesRepo(db),
+    settings: createSettingsRepo(db),
+  };
+}

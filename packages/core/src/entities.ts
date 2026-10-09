@@ -26,7 +26,8 @@ export interface Category {
 }
 
 export interface CreateCategoryInput {
-  key: string;
+  /** Optional. Derived from the name when omitted or blank. */
+  key?: string;
   name: string;
   description?: string | null;
   color?: string | null;

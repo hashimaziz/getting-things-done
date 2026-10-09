@@ -1,4 +1,9 @@
 export { CategoryNotFoundError, createCategoriesRepo, type CategoriesRepo } from './categories.js';
+export {
+  createRepositories,
+  type CreateRepositoriesOptions,
+  type Repositories,
+} from './container.js';
 export { FieldDefNotFoundError, createFieldDefsRepo, type FieldDefsRepo } from './field-defs.js';
 export {
   IllegalContainerTransitionError,
@@ -21,3 +26,4 @@ export {
   type PeopleRepo,
   type RecurrenceRulesRepo,
 } from './reference-data.js';
+export { createSettingsRepo, type SettingValueMap, type SettingsRepo } from './settings.js';
