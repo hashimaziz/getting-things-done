@@ -1,4 +1,3 @@
-import { defineConfig, mergeConfig } from 'vitest/config';
-import shared from '../../vitest.shared';
+import { nodeTestConfig } from '../../vitest.shared';
 
-export default mergeConfig(shared, defineConfig({}));
+export default nodeTestConfig();

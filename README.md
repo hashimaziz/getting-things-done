@@ -39,10 +39,26 @@ On first run the app presents a setup wizard — nothing is seeded automatically
 | --- | --- |
 | `pnpm dev` | Build packages, run API and web in watch mode |
 | `pnpm build` | Build all packages and the web bundle |
-| `pnpm test` | Run all tests |
+| `pnpm test` | Run all tests. No build needed first, see below |
 | `pnpm typecheck` | Build packages, then typecheck everything |
 | `pnpm lint` / `pnpm format` | ESLint / Prettier |
-| `pnpm check` | typecheck + lint + format check + tests. Run this before every commit. |
+| `pnpm check` | typecheck + lint + format check + tests. Run this before every commit |
+
+### Tests do not read `dist`
+
+Vitest is configured to alias every `@gtd/*` import to that package's **source**,
+so a test in one package can never accidentally exercise a stale build of another.
+Without it, a bug already fixed in `src` gets chased again because `db/dist` is
+what got imported — which happened, twice, in the same afternoon.
+
+That is also why `pnpm test` does not build first: there is nothing to build for a
+test run. Compiling the real build output is still verified, because `pnpm check`
+runs `typecheck`, which builds every package before checking it.
+
+The aliases are derived from each package's own manifest, so adding a package needs
+no change. `test/harness.test.ts` guards the arrangement and fails if the alias is
+removed.
+
 
 ## Data
 
