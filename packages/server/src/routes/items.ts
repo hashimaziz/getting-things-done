@@ -13,7 +13,6 @@ import {
   CONTAINERS,
   FIELD_TYPES,
   applyFieldDefaults,
-  createItemFieldResolver,
   resolveDefinitionsForCategory,
   validateFieldValues,
   type CreateItemInput,
@@ -120,15 +119,6 @@ export function registerItemRoutes(app: FastifyInstance): void {
   const definitionsFor = (categoryId: string): FieldDefinition[] =>
     app.repos.fieldDefs.listForCategory(categoryId);
 
-  /** Resolver covering core columns plus every known field, so filters compile. */
-  const resolverFor = (definitions: readonly FieldDefinition[]) =>
-    createItemFieldResolver({
-      fieldTypes: definitions.map((definition) => ({
-        key: definition.key,
-        type: definition.type,
-      })),
-    });
-
   app.get('/api/items', async (request, reply) => {
     const query = request.query as {
       filter?: string;
@@ -169,7 +159,7 @@ export function registerItemRoutes(app: FastifyInstance): void {
 
     const result = app.repos.items.query(
       compact({
-        resolver: resolverFor(definitions),
+        resolver: app.itemFieldResolver(definitions),
         filter,
         sort,
         limit: query.limit === undefined ? undefined : Number(query.limit),

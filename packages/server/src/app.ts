@@ -7,7 +7,13 @@
  * without going through HTTP.
  */
 
-import { APP_CONFIG, type IsoDate } from '@gtd/core';
+import {
+  APP_CONFIG,
+  createItemFieldResolver,
+  type FieldDefinition,
+  type FieldResolver,
+  type IsoDate,
+} from '@gtd/core';
 import { createRepositories, reconcileFieldIndexes, type Db, type Repositories } from '@gtd/db';
 import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -43,6 +49,14 @@ declare module 'fastify' {
     db: Db;
     /** The host's notion of today, injectable for deterministic tests. */
     today: () => IsoDate;
+    /**
+     * A filter compiler resolver for the items table.
+     *
+     * Every route that accepts a filter needs one, and building it means pairing
+     * the core columns with the user's own field definitions. Doing it once here
+     * means a new field type cannot be forgotten by one route.
+     */
+    itemFieldResolver(definitions: readonly FieldDefinition[]): FieldResolver;
   }
 }
 
@@ -76,6 +90,11 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   app.decorate('db', options.db);
   app.decorate('repos', repos);
   app.decorate('today', today);
+  app.decorate('itemFieldResolver', (definitions: readonly FieldDefinition[]) =>
+    createItemFieldResolver({
+      fieldTypes: definitions.map((definition) => ({ key: definition.key, type: definition.type })),
+    }),
+  );
 
   app.setErrorHandler((error, request, reply) => {
     return sendError(error, request, reply);

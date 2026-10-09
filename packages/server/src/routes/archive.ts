@@ -7,13 +7,7 @@
  * present rather than hardcoded.
  */
 
-import {
-  addDays,
-  createItemFieldResolver,
-  resolveDefinitionsForCategory,
-  type FilterNode,
-  type SortRule,
-} from '@gtd/core';
+import { addDays, resolveDefinitionsForCategory, type FilterNode, type SortRule } from '@gtd/core';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { BadRequestError } from '../http-errors.js';
@@ -49,12 +43,7 @@ export function registerArchiveRoutes(app: FastifyInstance): void {
     const definitions = categoryId
       ? resolveDefinitionsForCategory(allDefinitions(), categoryId)
       : allDefinitions();
-    return createItemFieldResolver({
-      fieldTypes: definitions.map((definition) => ({
-        key: definition.key,
-        type: definition.type,
-      })),
-    });
+    return app.itemFieldResolver(definitions);
   };
 
   /** The filterable completed list. */

@@ -23,6 +23,7 @@ import {
 } from './reference-data.js';
 import { createFieldDefsRepo, type FieldDefsRepo } from './field-defs.js';
 import { createItemsRepo, type ItemsRepo } from './items.js';
+import { createProjectsRepo, type ProjectsRepo } from './projects.js';
 import { createSettingsRepo, type SettingsRepo } from './settings.js';
 
 export interface Repositories {
@@ -31,6 +32,7 @@ export interface Repositories {
   categories: CategoriesRepo;
   fieldDefs: FieldDefsRepo;
   items: ItemsRepo;
+  projects: ProjectsRepo;
   contexts: ContextsRepo;
   people: PeopleRepo;
   recurrenceRules: RecurrenceRulesRepo;
@@ -50,6 +52,7 @@ export function createRepositories(db: Db, options: CreateRepositoriesOptions = 
     categories: createCategoriesRepo(db),
     fieldDefs: createFieldDefsRepo(db),
     items: createItemsRepo(db, options.items),
+    projects: createProjectsRepo(db),
     contexts: createContextsRepo(db),
     people: createPeopleRepo(db),
     recurrenceRules: createRecurrenceRulesRepo(db),

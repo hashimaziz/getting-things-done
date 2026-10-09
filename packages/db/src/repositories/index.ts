@@ -1,3 +1,4 @@
+export { ProjectNotFoundError, createProjectsRepo, type ProjectsRepo } from './projects.js';
 export { createActivityRepo, type ActivityRepo, type ListActivityParams } from './activity.js';
 export {
   createArchiveRepo,
