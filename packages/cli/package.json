@@ -1,0 +1,21 @@
+{
+  "name": "@gtd/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "gtd": "./dist/bin.js"
+  },
+  "main": "./dist/bin.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@gtd/core": "workspace:*",
+    "@gtd/db": "workspace:*"
+  }
+}

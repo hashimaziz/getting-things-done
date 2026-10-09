@@ -1,0 +1,38 @@
+{
+  "name": "gtd",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.10.1",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "pnpm run build:packages && pnpm --filter=@gtd/web run build",
+    "build:packages": "pnpm -r --filter=@gtd/cli... --filter=@gtd/server... --workspace-concurrency=1 run build",
+    "dev": "pnpm run build:packages && concurrently -n server,web -c cyan,magenta \"pnpm --filter=@gtd/server run dev\" \"pnpm --filter=@gtd/web run dev\"",
+    "dev:server": "pnpm --filter=@gtd/server run dev",
+    "dev:web": "pnpm --filter=@gtd/web run dev",
+    "cli": "node packages/cli/dist/bin.js",
+    "test": "pnpm -r run test",
+    "test:watch": "pnpm -r --parallel run test:watch",
+    "typecheck": "pnpm run build:packages && pnpm -r run typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test",
+    "clean": "pnpm -r exec rm -rf dist node_modules && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.7.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vitest": "^3.2.4"
+  }
+}
