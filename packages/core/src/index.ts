@@ -1,3 +1,4 @@
+export * from './activity.js';
 export * from './config/index.js';
 export * from './dates/index.js';
 export * from './entities.js';

@@ -8,6 +8,8 @@
  */
 
 import type { Db } from '../driver.js';
+import { createActivityRepo, type ActivityRepo } from './activity.js';
+import { createArchiveRepo, type ArchiveRepo } from './archive.js';
 import { createCategoriesRepo, type CategoriesRepo } from './categories.js';
 import {
   createChecklistTemplatesRepo,
@@ -24,6 +26,8 @@ import { createItemsRepo, type ItemsRepo } from './items.js';
 import { createSettingsRepo, type SettingsRepo } from './settings.js';
 
 export interface Repositories {
+  activity: ActivityRepo;
+  archive: ArchiveRepo;
   categories: CategoriesRepo;
   fieldDefs: FieldDefsRepo;
   items: ItemsRepo;
@@ -41,6 +45,8 @@ export interface CreateRepositoriesOptions {
 
 export function createRepositories(db: Db, options: CreateRepositoriesOptions = {}): Repositories {
   return {
+    activity: createActivityRepo(db),
+    archive: createArchiveRepo(db),
     categories: createCategoriesRepo(db),
     fieldDefs: createFieldDefsRepo(db),
     items: createItemsRepo(db, options.items),

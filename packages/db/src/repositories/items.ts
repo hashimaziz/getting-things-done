@@ -13,6 +13,7 @@
 import {
   assertContainerInvariants,
   checkTransition,
+  diffItems,
   compileQuery,
   inferContainer,
   newId,
@@ -50,7 +51,7 @@ const WRITE_CONTEXT = {
   },
 } as const;
 
-interface ItemRow {
+export interface ItemRow {
   id: string;
   category_id: string;
   title: string;
@@ -87,7 +88,7 @@ const COLUMNS = `id, category_id, title, container, notes, when_at, deadline_on,
   parent_item_id, occurrence_date, data_json, sort_order, created_at, updated_at,
   completed_at, trashed_at, is_template`;
 
-function toItem(row: ItemRow): Item {
+export function toItem(row: ItemRow): Item {
   return {
     id: row.id,
     categoryId: row.category_id,
@@ -473,10 +474,20 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
       );
 
       const after = toItem(require(id));
-      if (patch.container !== undefined && patch.container !== before.container) {
-        log(id, verb, { container: before.container }, { container: after.container });
-      } else {
-        log(id, verb, undefined, undefined);
+
+      // A container change is recorded on its own verb, because that is the
+      // meaningful event. Anything else is recorded as a field-level diff, which
+      // is what the history view and undo actually need; recording an edit with
+      // null from/to, as this used to, made the log useless for both.
+      const changes = diffItems(before, after);
+      if (changes.length > 0) {
+        const moved = before.container !== after.container;
+        log(
+          id,
+          moved ? 'moved' : verb,
+          Object.fromEntries(changes.map((change) => [change.field, change.from])),
+          Object.fromEntries(changes.map((change) => [change.field, change.to])),
+        );
       }
 
       return checkInvariants(after);
@@ -507,58 +518,74 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
     },
 
     setData(id: string, data: Record<string, FieldValue>): Item {
-      db.run(
-        'UPDATE items SET data_json = ?, updated_at = ? WHERE id = ?',
-        writeJson(data),
-        now(),
-        id,
+      const before = toItem(require(id));
+      translating(WRITE_CONTEXT, () =>
+        db.run(
+          'UPDATE items SET data_json = ?, updated_at = ? WHERE id = ?',
+          writeJson(data),
+          now(),
+          id,
+        ),
       );
-      log(id, 'updated', undefined, { data });
+      // A field-level diff, so the history view and undo can see which value
+      // changed rather than that "data" changed as a blob.
+      const changes = diffItems(before, toItem(require(id)));
+      if (changes.length > 0) {
+        log(
+          id,
+          'updated',
+          Object.fromEntries(changes.map((change) => [change.field, change.from])),
+          Object.fromEntries(changes.map((change) => [change.field, change.to])),
+        );
+      }
       return checkInvariants(toItem(require(id)));
     },
 
     complete(id: string): Item {
       const timestamp = now();
+      const before = toItem(require(id));
       db.run(
         `UPDATE items SET container = 'done', completed_at = ?, updated_at = ? WHERE id = ?`,
         timestamp,
         timestamp,
         id,
       );
-      const before = toItem(require(id));
       log(id, 'completed', { container: before.container }, { container: 'done' });
       return checkInvariants(toItem(require(id)));
     },
 
     reopen(id: string): Item {
+      const before = toItem(require(id));
       db.run(
         `UPDATE items SET container = 'next_action', completed_at = NULL, updated_at = ? WHERE id = ?`,
         now(),
         id,
       );
-      log(id, 'reopened', { container: 'done' }, { container: 'next_action' });
+      log(id, 'reopened', { container: before.container }, { container: 'next_action' });
       return checkInvariants(toItem(require(id)));
     },
 
     trash(id: string): Item {
       const timestamp = now();
+      const before = toItem(require(id));
       db.run(
         `UPDATE items SET container = 'trash', trashed_at = ?, updated_at = ? WHERE id = ?`,
         timestamp,
         timestamp,
         id,
       );
-      log(id, 'trashed', undefined, undefined);
+      log(id, 'trashed', { container: before.container }, { container: 'trash' });
       return checkInvariants(toItem(require(id)));
     },
 
     restore(id: string): Item {
+      const before = toItem(require(id));
       db.run(
         `UPDATE items SET container = 'inbox', trashed_at = NULL, updated_at = ? WHERE id = ?`,
         now(),
         id,
       );
-      log(id, 'restored', { container: 'trash' }, { container: 'inbox' });
+      log(id, 'restored', { container: before.container }, { container: 'inbox' });
       return checkInvariants(toItem(require(id)));
     },
 

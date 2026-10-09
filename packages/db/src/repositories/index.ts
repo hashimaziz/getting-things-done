@@ -1,3 +1,12 @@
+export { createActivityRepo, type ActivityRepo, type ListActivityParams } from './activity.js';
+export {
+  createArchiveRepo,
+  type ArchiveQuery,
+  type ArchiveRepo,
+  type ArchiveResult,
+  type Facet,
+  type FacetValue,
+} from './archive.js';
 export { CategoryNotFoundError, createCategoriesRepo, type CategoriesRepo } from './categories.js';
 export {
   createRepositories,

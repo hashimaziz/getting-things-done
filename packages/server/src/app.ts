@@ -25,14 +25,15 @@ export interface BuildAppOptions {
    */
   reconcileIndexes?: boolean;
   /**
-   * What "today" means.
+   * The clock, returning an ISO 8601 date or date-time.
    *
-   * Injected rather than read from the clock inside each caller, because
-   * recurrence materialisation is the one behaviour whose output depends on the
-   * current date, and a test that asserts on generated dates is worthless without
-   * a way to pin it.
+   * One clock for the whole app, wired into the repositories as well as the
+   * routes. It used to reach only the recurrence service, so item timestamps and
+   * activity-log entries still came from the real `Date` while recurrence
+   * followed the injected value, which made the archive's date filters miss rows
+   * the test had just created.
    */
-  now?: () => IsoDate;
+  now?: () => string;
 }
 
 declare module 'fastify' {
@@ -55,7 +56,16 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     credentials: false,
   });
 
-  const repos = createRepositories(options.db);
+  const raw = options.now ?? (() => new Date().toISOString());
+
+  /** A bare `YYYY-MM-DD` is treated as midnight UTC for storage. */
+  const instant = (): string => {
+    const value = raw();
+    return value.length === 10 ? `${value}T00:00:00.000Z` : value;
+  };
+  const today = (): IsoDate => instant().slice(0, 10);
+
+  const repos = createRepositories(options.db, { items: { now: instant } });
 
   if (options.reconcileIndexes !== false) {
     // Three drift cases would otherwise stay invisible until a query got
@@ -65,7 +75,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   app.decorate('db', options.db);
   app.decorate('repos', repos);
-  app.decorate('today', options.now ?? (() => new Date().toISOString().slice(0, 10) as IsoDate));
+  app.decorate('today', today);
 
   app.setErrorHandler((error, request, reply) => {
     return sendError(error, request, reply);
