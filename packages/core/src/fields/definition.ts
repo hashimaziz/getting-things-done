@@ -290,6 +290,19 @@ export function normaliseOptions(type: FieldType, options: FieldOptions | undefi
   }
 }
 
+/**
+ * A partial update to an existing definition.
+ *
+ * `undefined` means leave alone; every other field is applied as given. `id`,
+ * `createdAt` and `isCore` are excluded because they are derived, and letting a
+ * caller set them would let a definition claim a core column it does not have.
+ */
+export type UpdateFieldDefinitionInput = Partial<
+  Omit<CreateFieldDefinitionInput, 'existingKeys' | 'sortOrder'> & {
+    sortOrder: number;
+  }
+>;
+
 /** Sorts definitions into the order the editor and tables should render them. */
 export function sortFieldDefinitions(definitions: readonly FieldDefinition[]): FieldDefinition[] {
   return [...definitions].sort(

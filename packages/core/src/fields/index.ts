@@ -43,4 +43,5 @@ export {
   sortFieldDefinitions,
   type CreateFieldDefinitionInput,
   type ParsedFieldDefinition,
+  type UpdateFieldDefinitionInput,
 } from './definition.js';

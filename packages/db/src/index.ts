@@ -1,4 +1,11 @@
 export {
+  MigrationDriftError,
+  bootstrap,
+  describePaths,
+  type Bootstrapped,
+  type BootstrapOptions,
+} from './bootstrap.js';
+export {
   DatabaseSync,
   openDb,
   openMemoryDb,
@@ -10,6 +17,16 @@ export {
   type SqlValue,
 } from './driver.js';
 export {
+  createFieldIndex,
+  dropFieldIndex,
+  expressionFor,
+  indexNameFor,
+  needsIndex,
+  reconcileFieldIndexes,
+  type ReconcileReport,
+} from './field-indexes.js';
+export { fromBool, nullIfUndefined, readJson, toBool, writeJson } from './json.js';
+export {
   assertMigrationIdsAreSane,
   checksumOf,
   currentVersion,
@@ -18,12 +35,6 @@ export {
   type AppliedMigration,
   type MigrationReport,
 } from './migrate.js';
-export { LATEST_MIGRATION_ID, MIGRATIONS, type Migration } from './schema/migrations.js';
 export { ensureDataDir, resolvePaths, type ResolveOptions, type ResolvedPaths } from './paths.js';
-export {
-  MigrationDriftError,
-  bootstrap,
-  describePaths,
-  type Bootstrapped,
-  type BootstrapOptions,
-} from './bootstrap.js';
+export * from './repositories/index.js';
+export { LATEST_MIGRATION_ID, MIGRATIONS, type Migration } from './schema/migrations.js';
