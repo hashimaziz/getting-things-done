@@ -14,6 +14,7 @@ export {
   type CreateRepositoriesOptions,
   type Repositories,
 } from './container.js';
+export { DashboardNotFoundError, createDashboardsRepo, type DashboardsRepo } from './dashboards.js';
 export { FieldDefNotFoundError, createFieldDefsRepo, type FieldDefsRepo } from './field-defs.js';
 export {
   IllegalContainerTransitionError,

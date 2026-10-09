@@ -17,6 +17,7 @@ import {
   type InputHTMLAttributes,
   type LabelHTMLAttributes,
   type ReactNode,
+  type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
 import { cn } from '@/lib/cn';
@@ -103,6 +104,32 @@ export const Textarea = forwardRef<
     />
   );
 });
+
+/* ------------------------------------------------------------------- select */
+
+/**
+ * A native select, styled.
+ *
+ * Native rather than a custom listbox on purpose. It brings keyboard behaviour, screen
+ * reader support and platform picker behaviour that a custom implementation has to
+ * re-create, and it is already accessible. The cost is that its options cannot be
+ * rendered as rich content, which has not yet been needed.
+ */
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
+  function Select({ className, ...props }, ref) {
+    return (
+      <select
+        ref={ref}
+        className={cn(
+          'h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm',
+          'focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+          className,
+        )}
+        {...props}
+      />
+    );
+  },
+);
 
 /* -------------------------------------------------------------------- card */
 

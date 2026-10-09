@@ -27,7 +27,14 @@ export function renderApp(
   // errors, so the next render finds no cache entry, refetches, errors again, and
   // the screen never settles. A client per render already isolates tests, because
   // no two renders share a cache.
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  //
+  // `staleTime: Infinity` so a second observer mounting later does not refetch what
+  // the first one already fetched. With the default of zero every mount refetches, and
+  // a test asserting "one request for this data" would fail for a reason that has
+  // nothing to do with the code under test.
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
 
   const result = render(
     <QueryClientProvider client={queryClient}>
@@ -64,7 +71,9 @@ export function renderInRouter(ui: ReactElement, initialPath = '/dashboard') {
 
 /** Renders a component with the same providers, for testing one piece. */
 export function renderWithProviders(ui: ReactElement) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
 
   return {
     ...render(

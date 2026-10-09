@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { registerArchiveRoutes } from './archive.js';
 import { registerCategoryRoutes } from './categories.js';
+import { registerDashboardRoutes } from './dashboards.js';
 import { registerItemRoutes } from './items.js';
 import { registerMetricsRoutes } from './metrics.js';
 import { registerReferenceRoutes } from './reference.js';
@@ -12,6 +13,7 @@ import { registerSettingsRoutes } from './settings.js';
 export function registerRoutes(app: FastifyInstance): void {
   registerSettingsRoutes(app);
   registerCategoryRoutes(app);
+  registerDashboardRoutes(app);
   registerArchiveRoutes(app);
   registerItemRoutes(app);
   registerMetricsRoutes(app);
@@ -23,6 +25,7 @@ export function registerRoutes(app: FastifyInstance): void {
 
 export { registerArchiveRoutes } from './archive.js';
 export { registerCategoryRoutes } from './categories.js';
+export { registerDashboardRoutes } from './dashboards.js';
 export { registerItemRoutes } from './items.js';
 export { registerMetricsRoutes } from './metrics.js';
 export { registerReferenceRoutes } from './reference.js';

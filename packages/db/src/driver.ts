@@ -32,6 +32,18 @@ export interface Db {
    */
   get<T extends object = SqlRow>(sql: string, ...params: SqlValue[]): T | undefined;
   all<T extends object = SqlRow>(sql: string, ...params: SqlValue[]): T[];
+  /**
+   * Runs a function inside a transaction, rolling back if it throws.
+   *
+   * Needed wherever a change spans several statements and must not be half applied:
+   * promoting a dashboard to default clears the old one first, so an interruption
+   * between the two statements would leave the app with no default at all.
+   *
+   * Nested calls join the outer transaction rather than starting a second one, which
+   * SQLite does not support. Callers therefore do not need to know whether they are
+   * already inside one.
+   */
+  transaction<T>(work: () => T): T;
   close(): void;
   readonly underlying: DatabaseSync;
 }
@@ -87,6 +99,9 @@ class NodeSqliteDb implements Db {
     }
   }
 
+  /** Nesting depth for `transaction`. See the interface documentation. */
+  private depth = 0;
+
   exec(sql: string): void {
     this.underlying.exec(sql);
   }
@@ -109,6 +124,34 @@ class NodeSqliteDb implements Db {
 
   all<T extends object = SqlRow>(sql: string, ...params: SqlValue[]): T[] {
     return this.underlying.prepare(sql).all(...params) as T[];
+  }
+
+  transaction<T>(work: () => T): T {
+    // Tracked with a depth counter rather than a boolean, because a repository method
+    // called from inside another transaction must join it rather than fail.
+    if (this.depth > 0) {
+      this.depth += 1;
+      try {
+        return work();
+      } finally {
+        this.depth -= 1;
+      }
+    }
+
+    this.depth = 1;
+    this.exec('BEGIN IMMEDIATE');
+    try {
+      const result = work();
+      this.exec('COMMIT');
+      return result;
+    } catch (error) {
+      // Rolled back before rethrowing so the caller sees the original failure rather
+      // than a "cannot commit - no transaction active" error from the rollback path.
+      this.exec('ROLLBACK');
+      throw error;
+    } finally {
+      this.depth = 0;
+    }
   }
 
   close(): void {

@@ -22,6 +22,7 @@ import { ItemPage } from '@/pages/item-page';
 import { CapturePage } from '@/pages/capture-page';
 import { ClarifyPage } from '@/pages/clarify-page';
 import { CalendarPage } from '@/pages/calendar-page';
+import { DashboardPage } from '@/pages/dashboard-page';
 
 export function createRoutes(): RouteObject[] {
   return [
@@ -44,11 +45,8 @@ export function createRoutes(): RouteObject[] {
         </SetupGate>
       ),
       children: [
-        { index: true, element: <ComingSoon title="Dashboard" feature="Dashboard widgets" /> },
-        {
-          path: '/dashboard',
-          element: <ComingSoon title="Dashboard" feature="Dashboard widgets" />,
-        },
+        { index: true, element: <DashboardPage /> },
+        { path: '/dashboard', element: <DashboardPage /> },
         { path: '/capture', element: <CapturePage /> },
         { path: '/clarify', element: <ClarifyPage /> },
         { path: '/list/:container', element: <ListPage /> },

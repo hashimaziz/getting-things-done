@@ -35,6 +35,29 @@ export interface FetchStub {
   restore: () => void;
 }
 
+/**
+ * Whether a route answers a pathname.
+ *
+ * Supports `:param` segments, so a test can write `/api/items/:id` once rather than
+ * hard-coding an id in every test that navigates. An exact string still matches only
+ * itself, which is what the dashboard's own id needs.
+ */
+function pathMatches(pattern: string | RegExp, pathname: string): boolean {
+  if (pattern instanceof RegExp) {
+    return pattern.test(pathname);
+  }
+  if (!pattern.includes(':')) {
+    return pattern === pathname;
+  }
+
+  const patternParts = pattern.split('/');
+  const pathParts = pathname.split('/');
+  if (patternParts.length !== pathParts.length) {
+    return false;
+  }
+  return patternParts.every((part, index) => part.startsWith(':') || part === pathParts[index]);
+}
+
 export function stubFetch(routes: StubbedRoute[]): FetchStub {
   const calls: RecordedCall[] = [];
 
@@ -51,10 +74,7 @@ export function stubFetch(routes: StubbedRoute[]): FetchStub {
 
     const route = routes.find(
       (candidate) =>
-        (candidate.method ?? 'GET') === method &&
-        (typeof candidate.path === 'string'
-          ? candidate.path === url.pathname
-          : candidate.path.test(url.pathname)),
+        (candidate.method ?? 'GET') === method && pathMatches(candidate.path, url.pathname),
     );
 
     if (!route) {

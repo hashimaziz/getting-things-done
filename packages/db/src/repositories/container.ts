@@ -9,6 +9,7 @@
 
 import type { Db } from '../driver.js';
 import { createActivityRepo, type ActivityRepo } from './activity.js';
+import { createDashboardsRepo, type DashboardsRepo } from './dashboards.js';
 import { createArchiveRepo, type ArchiveRepo } from './archive.js';
 import { createCategoriesRepo, type CategoriesRepo } from './categories.js';
 import {
@@ -30,6 +31,7 @@ export interface Repositories {
   activity: ActivityRepo;
   archive: ArchiveRepo;
   categories: CategoriesRepo;
+  dashboards: DashboardsRepo;
   fieldDefs: FieldDefsRepo;
   items: ItemsRepo;
   projects: ProjectsRepo;
@@ -50,6 +52,7 @@ export function createRepositories(db: Db, options: CreateRepositoriesOptions = 
     activity: createActivityRepo(db),
     archive: createArchiveRepo(db),
     categories: createCategoriesRepo(db),
+    dashboards: createDashboardsRepo(db),
     fieldDefs: createFieldDefsRepo(db),
     items: createItemsRepo(db, options.items),
     projects: createProjectsRepo(db),
