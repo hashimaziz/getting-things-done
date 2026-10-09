@@ -1,0 +1,49 @@
+# Architecture
+
+GTD is a local-first monorepo. The browser is a client of a small REST API, and the
+API and headless CLI share the same repositories and SQLite database.
+
+## Package boundaries
+
+| Package | Owns |
+| --- | --- |
+| `@gtd/core` | Pure domain types and rules: containers, transitions, field definitions, filters, recurrence, metrics, invariants, and recommendations. |
+| `@gtd/db` | SQLite migrations, data-directory resolution, JSON helpers, and repositories. |
+| `@gtd/server` | Fastify application, request validation, error mapping, and REST routes. |
+| `@gtd/web` | React screens, URL-driven list state, query caching, and presentation. |
+| `@gtd/cli` | A thin command parser that opens the shared database and calls repositories directly. |
+
+The dependency direction is `web -> core`, `server -> core + db`, and `cli -> core + db`.
+The web package does not import the database or server packages, and the core package has
+no I/O dependency.
+
+## Data flow
+
+Writes enter through either the API or CLI and finish in a repository. Repositories own
+foreign-key writes, lifecycle transitions, activity logging, completion timestamps, and
+recurrence materialization. The API expands items with configured field definitions before
+returning them. The web client caches those responses with React Query and invalidates
+related prefixes after mutations.
+
+SQLite lives in the directory resolved from `GTD_HOME`, falling back to `~/.gtd`. WAL mode
+allows the API and CLI to use the same file. Tests use an in-memory database and inject the
+clock where date-sensitive behavior matters.
+
+## Important invariants
+
+- Inbox capture never asks for classification; every capture starts in `inbox`.
+- A calendar item needs a hard date/time. A deadline is soft and never places work on the
+  calendar.
+- Waiting work needs both a person and a follow-up date.
+- Completed work is filed in `done`, not deleted. Recurring series definitions and their
+  materialized occurrences are kept distinct.
+- Checklist templates copy their entries onto a new item; an item never depends on a
+  future template edit.
+- Filters and sorts are compiled by core into parameterized SQL. The browser does not
+  filter a partial page.
+
+## Testing strategy
+
+Core tests exercise pure rules. Database tests exercise migrations and repositories against
+SQLite. Server tests use Fastify injection. Web tests render the SPA in a memory router and
+stub the API. Run `pnpm test` for the full suite and `pnpm check` before a commit.
