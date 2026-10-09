@@ -10,6 +10,8 @@ import { useDocumentTitle } from '@/lib/document-title';
 import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { findNavItem } from '@/lib/navigation';
+import { CommandPalette, useCommandPalette } from '@/components/command-palette';
+import { useLoadShortcuts, useShellShortcuts } from '@/components/use-shell-shortcuts';
 import { Sidebar } from './sidebar';
 import { TopBar } from './top-bar';
 
@@ -27,16 +29,24 @@ export function AppShell() {
   // button lives in the top bar and has to know whether it is closing an open
   // sidebar.
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const palette = useCommandPalette();
+
+  const bindings = useLoadShortcuts();
+  useShellShortcuts(bindings, palette.toggle);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       <RouteTitle />
+      <CommandPalette open={palette.open} onOpenChange={palette.setOpen} />
       <div className={sidebarOpen ? 'absolute inset-y-0 left-0 z-30' : 'hidden'}>
         <Sidebar />
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar onToggleSidebar={() => setSidebarOpen((open) => !open)} />
+        <TopBar
+          onToggleSidebar={() => setSidebarOpen((open) => !open)}
+          onOpenPalette={palette.toggle}
+        />
         <main className="min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>

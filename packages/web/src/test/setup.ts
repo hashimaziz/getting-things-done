@@ -73,10 +73,40 @@ function patchFetch(): void {
   );
 }
 
+/**
+ * jsdom has no `ResizeObserver`, which cmdk (and therefore the command palette)
+ * uses to keep its list sized to the viewport. Without it the palette throws during
+ * its first render and the failure appears as a router error page in whatever test
+ * happened to render it.
+ */
+function patchResizeObserver(): void {
+  class NoopResizeObserver implements ResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+
+  vi.stubGlobal('ResizeObserver', NoopResizeObserver);
+  vi.stubGlobal('ResizeObserverEntry', class {});
+}
+
+/**
+ * jsdom implements no scrolling. cmdk scrolls the highlighted result into view as the
+ * selection moves, and without this the palette throws on the second keystroke.
+ */
+function patchScrolling(): void {
+  if (typeof Element === 'undefined') {
+    return;
+  }
+  Element.prototype.scrollIntoView = function scrollIntoView(): void {};
+}
+
 function installEnvironmentShims(): void {
   patchRequest();
   patchMatchMedia();
   patchFetch();
+  patchResizeObserver();
+  patchScrolling();
 }
 
 installEnvironmentShims();

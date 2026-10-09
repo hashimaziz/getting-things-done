@@ -39,6 +39,21 @@ export function renderApp(
   return { ...result, user: userEvent.setup() };
 }
 
+/**
+ * Renders one component inside a router.
+ *
+ * For components that navigate. `renderWithProviders` deliberately has no router:
+ * a component that needs one should ask for this, so a test that renders it without
+ * a router fails loudly instead of passing against a component that never navigates.
+ */
+export function renderInRouter(ui: ReactElement, initialPath = '/dashboard') {
+  const router = createMemoryRouter([{ path: '*', element: ui }], {
+    initialEntries: [initialPath],
+  });
+
+  return renderWithProviders(<RouterProvider router={router} />);
+}
+
 /** Renders a component with the same providers, for testing one piece. */
 export function renderWithProviders(ui: ReactElement) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });

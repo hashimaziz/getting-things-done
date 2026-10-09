@@ -12,10 +12,22 @@ import { Button } from '@/components/ui';
 import { useHealth } from '@/lib/hooks';
 import { useTheme } from '@/lib/theme-provider';
 import { cn } from '@/lib/cn';
+import { detectPlatform, formatBinding, DEFAULT_BINDINGS } from '@/shortcuts/registry';
 
-export function TopBar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
+export function TopBar({
+  onToggleSidebar,
+  onOpenPalette,
+}: {
+  onToggleSidebar: () => void;
+  onOpenPalette: () => void;
+}) {
   const { theme, toggle } = useTheme();
   const { data: health } = useHealth();
+
+  // Computed from the same parser the handler uses, so the key shown here is the
+  // key that will actually work.
+  const paletteHint =
+    formatBinding(DEFAULT_BINDINGS.commandPalette ?? 'mod+k', detectPlatform()) ?? 'mod+k';
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
@@ -41,21 +53,16 @@ export function TopBar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
 
       <div className="flex-1" />
 
-      {/*
-        Disabled until the palette lands. Rendered visibly-but-disabled rather than
-        hidden, so the shortcut it advertises is discoverable from the first run
-        instead of appearing without explanation.
-      */}
-      <Button variant="outline" size="sm" disabled className="gap-2 text-muted-foreground">
+      <Button variant="outline" size="sm" onClick={onOpenPalette} className="gap-2">
         <Search />
-        <span>Search</span>
+        <span className="hidden sm:inline">Search</span>
         <kbd
           className={cn(
             'ml-2 rounded border bg-muted px-1 font-mono text-[0.625rem]',
             'text-muted-foreground',
           )}
         >
-          ⌘K
+          {paletteHint}
         </kbd>
       </Button>
 

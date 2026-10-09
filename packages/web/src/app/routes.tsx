@@ -16,6 +16,7 @@ import { ComingSoon } from '@/pages/coming-soon';
 import { NotFound } from '@/pages/not-found';
 import { SetupGate, SetupRedirect } from '@/components/setup-gate';
 import { SetupWizard } from '@/pages/setup-wizard';
+import { ShortcutSettings } from '@/pages/shortcut-settings';
 import { containerLabel } from '@/lib/navigation';
 
 /**
@@ -89,10 +90,7 @@ export function createRoutes(): RouteObject[] {
           path: '/settings/dashboards',
           element: <ComingSoon title="Dashboards" feature="Widget layout editor" />,
         },
-        {
-          path: '/settings/shortcuts',
-          element: <ComingSoon title="Shortcuts" feature="Keyboard shortcut editor" />,
-        },
+        { path: '/settings/shortcuts', element: <ShortcutSettings /> },
         { path: '*', element: <NotFound /> },
       ],
     },
