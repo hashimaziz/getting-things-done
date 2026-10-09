@@ -226,6 +226,12 @@ export interface UpdateItemPatch {
   contextIds?: string[];
   recurrenceId?: string | null;
   sortOrder?: number;
+  /**
+   * Replaces the whole data map, not a merge. Callers must send the complete set
+   * of values they want to keep, which is why the route merges against the
+   * existing item before calling.
+   */
+  data?: Record<string, FieldValue>;
 }
 
 /** An item together with the field definitions that apply to its category. */

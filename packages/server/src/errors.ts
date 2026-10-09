@@ -19,6 +19,7 @@ import {
 import { InvalidQueryError } from '@gtd/core';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
+import { HttpError } from './http-errors.js';
 
 export interface ErrorBody {
   error: {
@@ -47,6 +48,16 @@ const NOT_FOUND: Mapping = { status: 404, code: 'not_found' };
  * filesystem layout to anything that can reach the port.
  */
 export function describeError(error: unknown): Mapping & { message: string; details?: unknown } {
+  // A route-raised HTTP error already knows its own status and code.
+  if (error instanceof HttpError) {
+    return {
+      status: error.status,
+      code: error.code,
+      message: error.message,
+      ...(error.details === undefined ? {} : { details: error.details }),
+    };
+  }
+
   if (error instanceof ZodError) {
     return {
       status: 400,

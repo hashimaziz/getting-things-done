@@ -363,6 +363,17 @@ export interface FieldValuesResult {
   issues: FieldValidationIssue[];
 }
 
+export interface ValidateFieldValuesOptions {
+  /**
+   * Require every field marked required to be present.
+   *
+   * Off by default, because the same function validates partial updates where an
+   * absent key means "leave this field alone" and demanding it would be wrong.
+   * Turn it on when materialising a complete item, such as on create.
+   */
+  enforceRequired?: boolean;
+}
+
 /**
  * Validates a map of raw values against a set of definitions.
  *
@@ -373,6 +384,7 @@ export interface FieldValuesResult {
 export function validateFieldValues(
   definitions: readonly FieldDefinition[],
   raw: Record<string, unknown>,
+  options: ValidateFieldValuesOptions = {},
 ): FieldValuesResult {
   const byKey = new Map(definitions.map((definition) => [definition.key, definition]));
   const values: Record<string, FieldValue> = {};
@@ -392,6 +404,15 @@ export function validateFieldValues(
       values[key] = result.value;
     } else {
       issues.push(...result.issues);
+    }
+  }
+
+  if (options.enforceRequired === true) {
+    for (const definition of definitions) {
+      if (!definition.required || definition.key in raw) {
+        continue;
+      }
+      issues.push({ key: definition.key, message: `"${definition.label}" is required` });
     }
   }
 

@@ -13,6 +13,8 @@
 import {
   assertContainerInvariants,
   checkTransition,
+  compileFilter,
+  compileQuery,
   inferContainer,
   newId,
   nowIso,
@@ -20,8 +22,12 @@ import {
   type ActivityVerb,
   type CreateItemInput,
   type FieldDefinition,
+  type FieldResolver,
   type FieldValue,
+  type FilterNode,
   type Item,
+  type QuerySpec,
+  type SortRule,
   type UpdateItemPatch,
 } from '@gtd/core';
 import type { Db } from '../driver.js';
@@ -118,6 +124,7 @@ export interface ItemsRepo {
   listByContainer(container: Item['container']): Item[];
   listAll(): Item[];
   countByContainer(): Record<string, number>;
+  query(params: QueryItemsParams): QueryItemsResult;
   create(input: CreateItemInput): Item;
   update(id: string, patch: UpdateItemPatch, verb?: ActivityVerb): Item;
   setContainer(id: string, container: Item['container']): Item;
@@ -127,6 +134,24 @@ export interface ItemsRepo {
   trash(id: string): Item;
   restore(id: string): Item;
   remove(id: string): void;
+}
+
+export interface QueryItemsParams {
+  /**
+   * Built from the field definitions, so a filter naming an unknown field is
+   * rejected rather than compiled.
+   */
+  resolver: FieldResolver;
+  filter?: FilterNode | null;
+  sort?: SortRule[];
+  limit?: number;
+  offset?: number;
+}
+
+export interface QueryItemsResult {
+  items: Item[];
+  /** Total rows matching the filter, ignoring limit and offset, for pagination. */
+  total: number;
 }
 
 export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRepo {
@@ -209,6 +234,32 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
         'SELECT container, count(*) AS count FROM items GROUP BY container',
       );
       return Object.fromEntries(rows.map((row) => [row.container, row.count]));
+    },
+
+    query(params: QueryItemsParams): QueryItemsResult {
+      const spec: QuerySpec = {
+        filter: params.filter ?? null,
+        ...(params.sort === undefined ? {} : { sort: params.sort }),
+        ...(params.limit === undefined ? {} : { limit: params.limit }),
+        ...(params.offset === undefined ? {} : { offset: params.offset }),
+      };
+      const compiled = compileQuery(spec, params.resolver);
+
+      const rows = db
+        .all<ItemRow>(`SELECT ${COLUMNS} FROM items ${compiled.clause}`, ...compiled.params)
+        .map(toItem)
+        .map(checkInvariants);
+
+      // The total is a separate COUNT rather than window arithmetic, and reuses
+      // the *same* compiled WHERE so the two cannot disagree about what matched.
+      const where = compileFilter(params.filter, params.resolver);
+      const countSql = where.sql === '' ? 'WHERE 1 = 1' : `WHERE ${where.sql}`;
+      const count = db.get<{ total: number }>(
+        `SELECT count(*) AS total FROM items ${countSql}`,
+        ...where.params,
+      );
+
+      return { items: rows, total: count?.total ?? rows.length };
     },
 
     create(input: CreateItemInput): Item {
@@ -310,6 +361,7 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
       set('recurrence_id', patch.recurrenceId);
       set('sort_order', patch.sortOrder);
       set('container', patch.container);
+      set('data_json', patch.data === undefined ? undefined : writeJson(patch.data));
 
       // Leaving a container clears the fields that only made sense there, so a
       // Waiting For item that becomes a next action does not keep chasing a
