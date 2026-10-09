@@ -20,6 +20,7 @@ import {
   type UpdateFieldDefinitionInput,
 } from '@gtd/core';
 import type { Db } from '../driver.js';
+import { translating } from '../errors.js';
 import { createFieldIndex, dropFieldIndex, needsIndex } from '../field-indexes.js';
 import { fromBool, readJson, toBool, writeJson } from '../json.js';
 
@@ -47,6 +48,18 @@ interface FieldDefRow {
 const COLUMNS = `id, category_id, key, label, description, type, options_json, required,
   default_value_json, group_label, show_in_table, show_in_card, filterable, sortable,
   is_core, sort_order, created_at, updated_at`;
+
+/**
+ * Constraints a field-definition write depends on.
+ *
+ * `key` is unique per scope, enforced by two partial unique indexes rather than
+ * one composite index, because SQLite treats NULLs as distinct and a composite
+ * index would let two global fields share a key.
+ */
+const WRITE_CONTEXT = {
+  entity: 'Field',
+  unique: { key: 'key' },
+} as const;
 
 function toDefinition(row: FieldDefRow): FieldDefinition {
   return parseFieldDefinition({
@@ -134,29 +147,31 @@ export function createFieldDefsRepo(db: Db): FieldDefsRepo {
 
       const definition = createFieldDefinition({ ...input, key, existingKeys });
 
-      db.run(
-        `INSERT INTO field_defs (id, category_id, key, label, description, type, options_json,
-           required, default_value_json, group_label, show_in_table, show_in_card, filterable,
-           sortable, is_core, sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        definition.id,
-        definition.categoryId,
-        definition.key,
-        definition.label,
-        definition.description,
-        definition.type,
-        writeJson(definition.options),
-        fromBool(definition.required),
-        writeJson(definition.defaultValue),
-        definition.groupLabel,
-        fromBool(definition.showInTable),
-        fromBool(definition.showInCard),
-        fromBool(definition.filterable),
-        fromBool(definition.sortable),
-        fromBool(definition.isCore),
-        definition.sortOrder,
-        definition.createdAt,
-        definition.updatedAt,
+      translating(WRITE_CONTEXT, () =>
+        db.run(
+          `INSERT INTO field_defs (id, category_id, key, label, description, type, options_json,
+             required, default_value_json, group_label, show_in_table, show_in_card, filterable,
+             sortable, is_core, sort_order, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          definition.id,
+          definition.categoryId,
+          definition.key,
+          definition.label,
+          definition.description,
+          definition.type,
+          writeJson(definition.options),
+          fromBool(definition.required),
+          writeJson(definition.defaultValue),
+          definition.groupLabel,
+          fromBool(definition.showInTable),
+          fromBool(definition.showInCard),
+          fromBool(definition.filterable),
+          fromBool(definition.sortable),
+          fromBool(definition.isCore),
+          definition.sortOrder,
+          definition.createdAt,
+          definition.updatedAt,
+        ),
       );
 
       if (needsIndex(definition)) {
@@ -183,30 +198,32 @@ export function createFieldDefsRepo(db: Db): FieldDefsRepo {
 
       const validated = parseFieldDefinition(merged);
 
-      db.run(
-        `UPDATE field_defs SET
-           category_id = ?, key = ?, label = ?, description = ?, type = ?, options_json = ?,
-           required = ?, default_value_json = ?, group_label = ?, show_in_table = ?,
-           show_in_card = ?, filterable = ?, sortable = ?, is_core = ?, sort_order = ?,
-           updated_at = ?
-         WHERE id = ?`,
-        validated.categoryId,
-        validated.key,
-        validated.label,
-        validated.description,
-        validated.type,
-        writeJson(validated.options),
-        fromBool(validated.required),
-        writeJson(validated.defaultValue),
-        validated.groupLabel,
-        fromBool(validated.showInTable),
-        fromBool(validated.showInCard),
-        fromBool(validated.filterable),
-        fromBool(validated.sortable),
-        fromBool(validated.isCore),
-        validated.sortOrder,
-        validated.updatedAt,
-        id,
+      translating(WRITE_CONTEXT, () =>
+        db.run(
+          `UPDATE field_defs SET
+             category_id = ?, key = ?, label = ?, description = ?, type = ?, options_json = ?,
+             required = ?, default_value_json = ?, group_label = ?, show_in_table = ?,
+             show_in_card = ?, filterable = ?, sortable = ?, is_core = ?, sort_order = ?,
+             updated_at = ?
+           WHERE id = ?`,
+          validated.categoryId,
+          validated.key,
+          validated.label,
+          validated.description,
+          validated.type,
+          writeJson(validated.options),
+          fromBool(validated.required),
+          writeJson(validated.defaultValue),
+          validated.groupLabel,
+          fromBool(validated.showInTable),
+          fromBool(validated.showInCard),
+          fromBool(validated.filterable),
+          fromBool(validated.sortable),
+          fromBool(validated.isCore),
+          validated.sortOrder,
+          validated.updatedAt,
+          id,
+        ),
       );
 
       // Keep the JSON index in step with whether the field is queryable.

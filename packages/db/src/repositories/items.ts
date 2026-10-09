@@ -31,7 +31,25 @@ import {
   type UpdateItemPatch,
 } from '@gtd/core';
 import type { Db } from '../driver.js';
+import { translating } from '../errors.js';
 import { readJson, writeJson } from '../json.js';
+
+/**
+ * Constraints an item write depends on.
+ *
+ * Item creates fail most often because the client referenced a category or
+ * project that does not exist, so those references are named here rather than
+ * surfacing as a generic foreign-key error.
+ */
+const WRITE_CONTEXT = {
+  entity: 'Item',
+  references: {
+    category_id: 'category',
+    project_id: 'project',
+    waiting_on_person_id: 'person',
+    recurrence_id: 'recurring series',
+  },
+} as const;
 
 interface ItemRow {
   id: string;
@@ -296,29 +314,31 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
         trashed_at: input.container === 'trash' ? timestamp : null,
       };
 
-      db.run(
-        `INSERT INTO items (${COLUMNS.replace(/\s+/g, ' ')}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        row.id,
-        row.category_id,
-        row.title,
-        row.container,
-        row.notes,
-        row.when_at,
-        row.deadline_on,
-        row.estimate_min,
-        row.project_id,
-        row.waiting_on_person_id,
-        row.follow_up_at,
-        row.contexts_json,
-        row.recurrence_id,
-        row.parent_item_id,
-        row.occurrence_date,
-        row.data_json,
-        row.sort_order,
-        row.created_at,
-        row.updated_at,
-        row.completed_at,
-        row.trashed_at,
+      translating(WRITE_CONTEXT, () =>
+        db.run(
+          `INSERT INTO items (${COLUMNS.replace(/\s+/g, ' ')}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          row.id,
+          row.category_id,
+          row.title,
+          row.container,
+          row.notes,
+          row.when_at,
+          row.deadline_on,
+          row.estimate_min,
+          row.project_id,
+          row.waiting_on_person_id,
+          row.follow_up_at,
+          row.contexts_json,
+          row.recurrence_id,
+          row.parent_item_id,
+          row.occurrence_date,
+          row.data_json,
+          row.sort_order,
+          row.created_at,
+          row.updated_at,
+          row.completed_at,
+          row.trashed_at,
+        ),
       );
 
       log(id, 'created', undefined, { container: row.container });
@@ -377,7 +397,9 @@ export function createItemsRepo(db: Db, options: ItemsRepoOptions = {}): ItemsRe
       assignments.push('updated_at = ?');
       params.push(now(), id);
 
-      db.run(`UPDATE items SET ${assignments.join(', ')} WHERE id = ?`, ...params);
+      translating(WRITE_CONTEXT, () =>
+        db.run(`UPDATE items SET ${assignments.join(', ')} WHERE id = ?`, ...params),
+      );
 
       const after = toItem(require(id));
       if (patch.container !== undefined && patch.container !== before.container) {

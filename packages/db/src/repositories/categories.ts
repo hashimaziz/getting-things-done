@@ -13,7 +13,14 @@ import {
   type UpdateCategoryPatch,
 } from '@gtd/core';
 import type { Db } from '../driver.js';
+import { translating } from '../errors.js';
 import { fromBool, toBool } from '../json.js';
+
+/** Declares the constraints a category write depends on, for error translation. */
+const WRITE_CONTEXT = {
+  entity: 'Category',
+  unique: { key: 'key' },
+} as const;
 
 interface CategoryRow {
   id: string;
@@ -97,19 +104,21 @@ export function createCategoriesRepo(db: Db): CategoriesRepo {
       const key =
         suppliedKey === undefined || suppliedKey === '' ? deriveKey(input.name) : suppliedKey;
 
-      db.run(
-        `INSERT INTO categories (id, key, name, description, color, icon, sort_order,
-           is_archived, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-        id,
-        key,
-        input.name.trim(),
-        input.description ?? null,
-        input.color ?? null,
-        input.icon ?? null,
-        input.sortOrder ?? 0,
-        timestamp,
-        timestamp,
+      translating(WRITE_CONTEXT, () =>
+        db.run(
+          `INSERT INTO categories (id, key, name, description, color, icon, sort_order,
+             is_archived, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+          id,
+          key,
+          input.name.trim(),
+          input.description ?? null,
+          input.color ?? null,
+          input.icon ?? null,
+          input.sortOrder ?? 0,
+          timestamp,
+          timestamp,
+        ),
       );
 
       const created = this.getById(id);
@@ -155,7 +164,9 @@ export function createCategoriesRepo(db: Db): CategoriesRepo {
       assignments.push('updated_at = ?');
       params.push(nowIso(), id);
 
-      db.run(`UPDATE categories SET ${assignments.join(', ')} WHERE id = ?`, ...params);
+      translating(WRITE_CONTEXT, () =>
+        db.run(`UPDATE categories SET ${assignments.join(', ')} WHERE id = ?`, ...params),
+      );
 
       const updated = this.getById(id);
       if (!updated) {

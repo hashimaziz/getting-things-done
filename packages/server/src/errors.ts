@@ -9,9 +9,12 @@
 import {
   CategoryNotFoundError,
   ChecklistTemplateNotFoundError,
+  ConstraintViolationError,
   ContextNotFoundError,
+  DuplicateKeyError,
   FieldDefNotFoundError,
   IllegalContainerTransitionError,
+  InvalidReferenceError,
   ItemNotFoundError,
   PersonNotFoundError,
   RecurrenceRuleNotFoundError,
@@ -83,6 +86,39 @@ export function describeError(error: unknown): Mapping & { message: string; deta
   // asks for something the current state forbids.
   if (error instanceof IllegalContainerTransitionError) {
     return { status: 409, code: 'illegal_transition', message: error.message };
+  }
+
+  // A duplicate unique key is a conflict with existing state, and one the user
+  // can act on by choosing a different value.
+  if (error instanceof DuplicateKeyError) {
+    return {
+      status: 409,
+      code: 'duplicate_key',
+      message: error.message,
+      details: { field: error.column },
+    };
+  }
+
+  // A reference to something that does not exist is well-formed but unsatisfiable.
+  if (error instanceof InvalidReferenceError) {
+    return {
+      status: 422,
+      code: 'invalid_reference',
+      message: error.message,
+      details: { field: error.column },
+    };
+  }
+
+  // A constraint with no specific explanation. Unique and foreign-key cases are
+  // handled above, so this is either a CHECK violation from a value the schemas
+  // let through, or a NOT NULL violation, which means this code has a bug.
+  if (error instanceof ConstraintViolationError) {
+    return {
+      status: error.kind === 'not_null' ? 500 : 400,
+      code: error.kind === 'not_null' ? 'internal_error' : 'constraint_violation',
+      message: error.message,
+      details: { kind: error.kind },
+    };
   }
 
   if (

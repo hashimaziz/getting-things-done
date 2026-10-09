@@ -1,6 +1,9 @@
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import { openMemoryDb, migrate, type Db } from '@gtd/db';
+import { z } from 'zod';
+import { InvalidQueryError } from '@gtd/core';
 import { buildApp } from '../src/app.js';
+import { describeError } from '../src/errors.js';
 import type { FastifyInstance } from 'fastify';
 
 let db: Db;
@@ -88,9 +91,21 @@ describe('categories', () => {
       url: '/api/categories',
       payload: { name: 'Other', key: 'work' },
     });
-    // A unique constraint violation is not a domain error, so it surfaces as 500.
-    // Recorded here as the current behaviour; see the note below.
-    expect(response.statusCode).toBeGreaterThanOrEqual(400);
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.code).toBe('duplicate_key');
+    expect(response.json().error.message).toBe('A Category with that key already exists.');
+    expect(response.json().error.details).toEqual({ field: 'key' });
+  });
+
+  it('rejects a duplicate key on update', async () => {
+    await createCategory('Work');
+    const home = await createCategory('Home');
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/categories/${home.id}`,
+      payload: { key: 'work' },
+    });
+    expect(response.statusCode).toBe(409);
   });
 
   it('lists categories', async () => {
@@ -374,23 +389,61 @@ describe('error handling', () => {
     expect(response.json().error.details).toEqual([{ path: 'name', message: expect.any(String) }]);
   });
 
-  it('does not leak internals on an unexpected error', async () => {
-    // A NOT NULL violation is not a domain error, so it falls through to a 500.
+  it('does not leak internals in a constraint message', async () => {
+    await createCategory('Work');
     const response = await app.inject({
-      method: 'POST',
-      url: '/api/categories',
-      payload: { name: 'Work', key: 'work' },
-    });
-    const second = await app.inject({
       method: 'POST',
       url: '/api/categories',
       payload: { name: 'Other', key: 'work' },
     });
-    expect(second.statusCode).toBe(500);
-    expect(second.json().error.code).toBe('internal_error');
-    // The message must not contain SQL or a filesystem path.
-    expect(JSON.stringify(second.json())).not.toContain('SQLITE');
-    expect(JSON.stringify(second.json())).not.toContain('sqlite');
-    expect(response.statusCode).toBe(201);
+    expect(response.statusCode).toBe(409);
+    // The message is ours, not SQLite's.
+    expect(JSON.stringify(response.json())).not.toContain('UNIQUE constraint');
+    expect(JSON.stringify(response.json())).not.toContain('categories.key');
+  });
+
+  it('returns a 422 for a reference to something that does not exist', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/items',
+      payload: { categoryId: 'missing', title: 'x' },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json().error.code).toBe('invalid_reference');
+    expect(response.json().error.message).toBe('That category does not exist.');
+  });
+});
+
+describe('describeError', () => {
+  it('describes an unknown error as an opaque 500', () => {
+    const mapping = describeError(new TypeError('cannot read property of undefined'));
+    expect(mapping.status).toBe(500);
+    expect(mapping.code).toBe('internal_error');
+    expect(mapping.message).toBe('Something went wrong');
+  });
+
+  it('never echoes the original message of an unknown error', () => {
+    const secret = '/Users/someone/.gtd/gtd.sqlite: UNIQUE constraint failed';
+    const mapping = describeError(new Error(secret));
+    expect(mapping.message).not.toContain('.gtd');
+    expect(mapping.message).not.toContain('UNIQUE');
+    expect(JSON.stringify(mapping)).not.toContain('someone');
+  });
+
+  it('describes a Zod failure with field detail', () => {
+    const result = z.object({ a: z.string() }).safeParse({});
+    if (!result.success) {
+      const mapping = describeError(result.error);
+      expect(mapping.status).toBe(400);
+      expect(mapping.code).toBe('validation_failed');
+      expect(mapping.details).toEqual([{ path: 'a', message: expect.any(String) }]);
+    }
+  });
+
+  it('describes an invalid query with its path', () => {
+    const mapping = describeError(new InvalidQueryError('nope', 'filter[1]'));
+    expect(mapping.status).toBe(400);
+    expect(mapping.code).toBe('invalid_query');
+    expect(mapping.details).toEqual({ path: 'filter[1]' });
   });
 });

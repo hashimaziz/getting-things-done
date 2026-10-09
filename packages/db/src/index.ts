@@ -17,6 +17,17 @@ export {
   type SqlValue,
 } from './driver.js';
 export {
+  ConstraintViolationError,
+  DuplicateKeyError,
+  InvalidReferenceError,
+  SQLITE_CONSTRAINT,
+  constraintKind,
+  sqliteErrcode,
+  translating,
+  type ConstraintKind,
+  type WriteContext,
+} from './errors.js';
+export {
   createFieldIndex,
   dropFieldIndex,
   expressionFor,
