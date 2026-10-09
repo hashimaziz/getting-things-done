@@ -6,7 +6,7 @@
   "main": "./dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "node --watch --experimental-strip-types src/main.ts",
+    "dev": "node --watch --experimental-strip-types --loader ./src/dev-loader.mjs src/main.ts",
     "start": "node dist/main.js",
     "test": "vitest run",
     "test:watch": "vitest",

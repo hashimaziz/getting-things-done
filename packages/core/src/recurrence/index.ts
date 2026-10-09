@@ -18,7 +18,8 @@
  *   offset changes. That is correct behaviour, not drift.
  */
 
-import { RRule } from 'rrule';
+import * as RRulePackage from 'rrule';
+import type { RRule as RRuleType } from 'rrule';
 import {
   addDays,
   isIsoDate,
@@ -26,6 +27,23 @@ import {
   type IsoDate,
   type IsoDateTime,
 } from '../dates/index.js';
+
+// rrule 2.x publishes an ESM build through its `module` field, but Node's native
+// resolver follows its CommonJS `main` field. Importing a named export therefore
+// works in Vite and fails when the production server starts under Node. Supporting
+// both shapes here keeps the runtime boundary in one place.
+const RRuleConstructor =
+  (
+    RRulePackage as unknown as {
+      RRule?: typeof RRuleType;
+      default?: { RRule?: typeof RRuleType };
+    }
+  ).RRule ?? (RRulePackage as unknown as { default?: { RRule?: typeof RRuleType } }).default?.RRule;
+
+if (RRuleConstructor === undefined) {
+  throw new Error('The rrule package did not expose RRule');
+}
+const RRule = RRuleConstructor;
 
 export const FREQUENCIES = ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as const;
 export type Frequency = (typeof FREQUENCIES)[number];
@@ -568,7 +586,7 @@ export function zonedWallClockToInstant(wall: WallClock, timezone: string): Date
  * is set, so the library treats every result as a wall clock rather than an
  * instant.
  */
-export function toFloatingRRule(spec: RecurrenceSpec): RRule {
+export function toFloatingRRule(spec: RecurrenceSpec): RRuleType {
   const anchor = parseIsoDate(spec.anchorDate);
   if (!anchor) {
     throw new InvalidRecurrenceError(`"${spec.anchorDate}" is not a calendar date`);
