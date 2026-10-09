@@ -1,0 +1,86 @@
+/**
+ * Route table.
+ *
+ * Exported as a factory rather than a constant because a router owns history state.
+ * A module-level router is fine in `main.tsx` and wrong in tests, where a second
+ * `createMemoryRouter` must not inherit the first one's location.
+ *
+ * Paths that are not built yet render {@link ComingSoon} rather than 404ing. A
+ * navigation entry that leads to "not found" reads as a broken application, and the
+ * sidebar already links everywhere.
+ */
+
+import { useParams, type RouteObject } from 'react-router';
+import { AppShell } from '@/components/layout/app-shell';
+import { ComingSoon } from '@/pages/coming-soon';
+import { NotFound } from '@/pages/not-found';
+import { containerLabel } from '@/lib/navigation';
+
+/**
+ * A container list, named after the container.
+ *
+ * The title comes from the container's own label rather than the word "List": the
+ * document title, the sidebar highlight and the heading all say "Inbox", so two
+ * tabs on different containers are distinguishable at a glance.
+ */
+function ContainerPlaceholder() {
+  const { container = '' } = useParams();
+  return <ComingSoon title={containerLabel(container)} feature="Container list" />;
+}
+
+export function createRoutes(): RouteObject[] {
+  return [
+    {
+      path: '/setup',
+      element: <ComingSoon title="Setup" feature="First-run setup wizard" />,
+    },
+    {
+      element: <AppShell />,
+      children: [
+        { index: true, element: <ComingSoon title="Dashboard" feature="Dashboard widgets" /> },
+        {
+          path: '/dashboard',
+          element: <ComingSoon title="Dashboard" feature="Dashboard widgets" />,
+        },
+        { path: '/capture', element: <ComingSoon title="Capture" feature="Quick capture" /> },
+        {
+          path: '/list/:container',
+          element: <ContainerPlaceholder />,
+        },
+        {
+          path: '/calendar',
+          element: <ComingSoon title="Calendar" feature="Week and month grid" />,
+        },
+        { path: '/projects', element: <ComingSoon title="Projects" feature="Project review" /> },
+        { path: '/review', element: <ComingSoon title="Weekly Review" feature="Guided review" /> },
+        { path: '/archive', element: <ComingSoon title="Archive" feature="Completed browser" /> },
+        { path: '/settings', element: <ComingSoon title="Settings" feature="Settings" /> },
+        {
+          path: '/settings/categories',
+          element: <ComingSoon title="Categories" feature="Category editor" />,
+        },
+        {
+          path: '/settings/fields',
+          element: <ComingSoon title="Fields" feature="Field editor" />,
+        },
+        {
+          path: '/settings/reference',
+          element: <ComingSoon title="Reference Data" feature="Projects, people, contexts" />,
+        },
+        {
+          path: '/settings/templates',
+          element: <ComingSoon title="Checklist Templates" feature="Template editor" />,
+        },
+        {
+          path: '/settings/dashboards',
+          element: <ComingSoon title="Dashboards" feature="Widget layout editor" />,
+        },
+        {
+          path: '/settings/shortcuts',
+          element: <ComingSoon title="Shortcuts" feature="Keyboard shortcut editor" />,
+        },
+        { path: '*', element: <NotFound /> },
+      ],
+    },
+  ];
+}

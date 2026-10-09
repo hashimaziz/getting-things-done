@@ -1,16 +1,141 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+
+/**
+ * The theme is defined with CSS custom properties rather than a Tailwind config
+ * file, because Tailwind 4 reads the theme from CSS. Dark mode is a class on the
+ * root element, so a dashboard on a laptop at night does not flash white.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  color-scheme: light dark;
+  --background: oklch(0.99 0.003 250);
+  --foreground: oklch(0.21 0.02 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.02 260);
+  --muted: oklch(0.96 0.005 250);
+  --muted-foreground: oklch(0.5 0.02 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.02 260);
+  --primary: oklch(0.52 0.17 260);
+  --primary-foreground: oklch(0.99 0.003 250);
+  --secondary: oklch(0.95 0.01 260);
+  --secondary-foreground: oklch(0.28 0.02 260);
+  --accent: oklch(0.94 0.02 250);
+  --accent-foreground: oklch(0.28 0.02 260);
+  --destructive: oklch(0.58 0.21 27);
+  --destructive-foreground: oklch(0.99 0.003 250);
+  --success: oklch(0.6 0.13 155);
+  --warning: oklch(0.72 0.15 70);
+  --border: oklch(0.91 0.006 260);
+  --input: oklch(0.91 0.006 260);
+  --ring: oklch(0.52 0.17 260);
+
+  --radius: 0.5rem;
+
+  /*
+   * Container colours. The three GTD places matter more than the others, so they
+   * get distinct hues rather than all being grey: the inbox is what needs
+   * clearing, next actions are what you do, and waiting is what is not yours.
+   */
+  --container-inbox: oklch(0.7 0.13 60);
+  --container-next_action: oklch(0.6 0.15 250);
+  --container-calendar: oklch(0.55 0.16 285);
+  --container-waiting: oklch(0.65 0.13 330);
+  --container-someday: oklch(0.62 0.1 190);
+  --container-reference: oklch(0.6 0.02 260);
+  --container-done: oklch(0.6 0.13 155);
+  --container-trash: oklch(0.55 0.02 260);
 }
 
-body {
-  margin: 0;
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
+.dark {
+  --background: oklch(0.17 0.015 260);
+  --foreground: oklch(0.95 0.005 250);
+  --card: oklch(0.21 0.018 260);
+  --card-foreground: oklch(0.95 0.005 250);
+  --muted: oklch(0.26 0.018 260);
+  --muted-foreground: oklch(0.7 0.015 260);
+  --popover: oklch(0.21 0.018 260);
+  --popover-foreground: oklch(0.95 0.005 250);
+  --primary: oklch(0.7 0.15 260);
+  --primary-foreground: oklch(0.17 0.015 260);
+  --secondary: oklch(0.28 0.018 260);
+  --secondary-foreground: oklch(0.95 0.005 250);
+  --accent: oklch(0.3 0.02 260);
+  --accent-foreground: oklch(0.95 0.005 250);
+  --destructive: oklch(0.65 0.19 27);
+  --destructive-foreground: oklch(0.17 0.015 260);
+  --border: oklch(0.3 0.018 260);
+  --input: oklch(0.32 0.018 260);
+  --ring: oklch(0.7 0.15 260);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+   * A visible focus ring on every interactive element. Keyboard operation is a
+   * requirement for an app driven by shortcuts, and a focus ring you cannot see is
+   * the same as no focus ring at all.
+   */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .container-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    white-space: nowrap;
+  }
 }

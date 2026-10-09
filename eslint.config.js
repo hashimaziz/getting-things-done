@@ -41,9 +41,17 @@ export default tseslint.config(
     },
   },
   {
+    // Browser code needs the DOM globals; vitest globals are only defined in the
+    // web tests, and only there.
     files: ['packages/web/**/*.{ts,tsx}'],
     languageOptions: {
       globals: { ...globals.browser },
+    },
+  },
+  {
+    files: ['packages/web/src/**/*.{test,spec}.{ts,tsx}', 'packages/web/src/test/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
     },
   },
 );
