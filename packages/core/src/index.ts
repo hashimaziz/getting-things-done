@@ -5,3 +5,4 @@ export * from './fields/index.js';
 export * from './filters/index.js';
 export * from './gtd/index.js';
 export * from './ids.js';
+export * from './recurrence/index.js';

@@ -208,6 +208,9 @@ importers:
       date-fns:
         specifier: ^4.4.0
         version: 4.4.0
+      rrule:
+        specifier: ^2.8.1
+        version: 2.8.1
       zod:
         specifier: ^4.1.13
         version: 4.6.5
@@ -2609,6 +2612,9 @@ packages:
     resolution: {integrity: sha512-RxXm0XVVV1hFI3dYe12ruaOgsYQ725lUcUWeMSQqkF9tTxVErY+fy2Ets6vWhItL9MZMSNZGbvZFc7rH/VHp2Q==}
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
     hasBin: true
+
+  rrule@2.8.1:
+    resolution: {integrity: sha512-hM3dHSBMeaJ0Ktp7W38BJZ7O1zOgaFEsn41PDk+yHoEtfLV+PoJt9E9xAlZiWgf/iqEqionN0ebHFZIDAp+iGw==}
 
   rxjs@7.8.2:
     resolution: {integrity: sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==}
@@ -5119,6 +5125,10 @@ snapshots:
       '@rollup/rollup-win32-x64-gnu': 4.64.2
       '@rollup/rollup-win32-x64-msvc': 4.64.2
       fsevents: 2.3.3
+
+  rrule@2.8.1:
+    dependencies:
+      tslib: 2.8.1
 
   rxjs@7.8.2:
     dependencies:
