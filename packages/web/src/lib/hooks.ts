@@ -13,10 +13,12 @@ import { keys } from './query-keys';
 import type {
   ActivityEntry,
   Category,
+  FilterNode,
   ContainerSpec,
   FieldDefinition,
   Item,
   Project,
+  SortRule,
   SystemHealth,
   SystemViolation,
 } from './types';
@@ -207,6 +209,55 @@ export function useMoveItem() {
       void queryClient.invalidateQueries({ queryKey: keys.review.all });
       void queryClient.invalidateQueries({ queryKey: keys.archive.all });
     },
+  });
+}
+
+/* ------------------------------------------------------------------- lists */
+
+export interface ItemListParams {
+  /** Narrowed to a string when the caller has one; the list itself always does. */
+  container?: string;
+  filter?: FilterNode | null;
+  sort?: SortRule[];
+  limit?: number;
+  offset?: number;
+}
+
+interface ItemListResponse {
+  items: Item[];
+  total: number;
+}
+
+/**
+ * One page of items.
+ *
+ * The key is built from the parameters rather than from a fixed key plus a filter
+ * argument, so two lists on screen at once — the inbox beside a project view — cannot
+ * overwrite each other's cache. Keys are hierarchical, so a mutation invalidates all
+ * of them at once.
+ */
+export function useItems(params: ItemListParams) {
+  const { container, filter = null, sort = [], limit = 50, offset = 0 } = params;
+
+  return useQuery({
+    // The key carries the container only when there is one, so the key for
+    // "everything" and for "the inbox" cannot collide.
+    queryKey: keys.items.list({
+      ...(container === undefined ? {} : { container }),
+      filter,
+      sort,
+      page: offset / Math.max(limit, 1),
+      pageSize: limit,
+    }),
+    queryFn: async () =>
+      apiFetch.get<ItemListResponse>('/items', {
+        ...(filter === null ? {} : { filter: JSON.stringify(filter) }),
+        ...(sort.length === 0 ? {} : { sort: JSON.stringify(sort) }),
+        limit,
+        offset,
+      }),
+    // Kept in the URL rather than here, so the two cannot disagree.
+    placeholderData: (previous) => previous,
   });
 }
 

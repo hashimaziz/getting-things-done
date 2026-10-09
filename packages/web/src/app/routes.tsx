@@ -10,26 +10,14 @@
  * sidebar already links everywhere.
  */
 
-import { useParams, type RouteObject } from 'react-router';
+import type { RouteObject } from 'react-router';
 import { AppShell } from '@/components/layout/app-shell';
 import { ComingSoon } from '@/pages/coming-soon';
 import { NotFound } from '@/pages/not-found';
 import { SetupGate, SetupRedirect } from '@/components/setup-gate';
 import { SetupWizard } from '@/pages/setup-wizard';
 import { ShortcutSettings } from '@/pages/shortcut-settings';
-import { containerLabel } from '@/lib/navigation';
-
-/**
- * A container list, named after the container.
- *
- * The title comes from the container's own label rather than the word "List": the
- * document title, the sidebar highlight and the heading all say "Inbox", so two
- * tabs on different containers are distinguishable at a glance.
- */
-function ContainerPlaceholder() {
-  const { container = '' } = useParams();
-  return <ComingSoon title={containerLabel(container)} feature="Container list" />;
-}
+import { ListPage } from '@/pages/list-page';
 
 export function createRoutes(): RouteObject[] {
   return [
@@ -58,10 +46,7 @@ export function createRoutes(): RouteObject[] {
           element: <ComingSoon title="Dashboard" feature="Dashboard widgets" />,
         },
         { path: '/capture', element: <ComingSoon title="Capture" feature="Quick capture" /> },
-        {
-          path: '/list/:container',
-          element: <ContainerPlaceholder />,
-        },
+        { path: '/list/:container', element: <ListPage /> },
         {
           path: '/calendar',
           element: <ComingSoon title="Calendar" feature="Week and month grid" />,
