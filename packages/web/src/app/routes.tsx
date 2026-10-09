@@ -24,6 +24,9 @@ import { ClarifyPage } from '@/pages/clarify-page';
 import { CalendarPage } from '@/pages/calendar-page';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { ReviewPage } from '@/pages/review-page';
+import { ChecklistTemplatesPage } from '@/pages/checklist-templates-page';
+import { ArchivePage } from '@/pages/archive-page';
+import { SettingsPage } from '@/pages/settings-page';
 
 export function createRoutes(): RouteObject[] {
   return [
@@ -55,24 +58,21 @@ export function createRoutes(): RouteObject[] {
         { path: '/calendar', element: <CalendarPage /> },
         { path: '/projects', element: <ComingSoon title="Projects" feature="Project review" /> },
         { path: '/review', element: <ReviewPage /> },
-        { path: '/archive', element: <ComingSoon title="Archive" feature="Completed browser" /> },
-        { path: '/settings', element: <ComingSoon title="Settings" feature="Settings" /> },
+        { path: '/archive', element: <ArchivePage /> },
+        { path: '/settings', element: <SettingsPage /> },
         {
           path: '/settings/categories',
-          element: <ComingSoon title="Categories" feature="Category editor" />,
+          element: <SettingsPage />,
         },
         {
           path: '/settings/fields',
-          element: <ComingSoon title="Fields" feature="Field editor" />,
+          element: <SettingsPage />,
         },
         {
           path: '/settings/reference',
-          element: <ComingSoon title="Reference Data" feature="Projects, people, contexts" />,
+          element: <SettingsPage />,
         },
-        {
-          path: '/settings/templates',
-          element: <ComingSoon title="Checklist Templates" feature="Template editor" />,
-        },
+        { path: '/settings/templates', element: <ChecklistTemplatesPage /> },
         {
           path: '/settings/dashboards',
           element: <ComingSoon title="Dashboards" feature="Widget layout editor" />,

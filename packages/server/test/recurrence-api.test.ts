@@ -385,3 +385,126 @@ describe('timezone setting', () => {
     expect(occurrences.json().rrule).toContain('TZID=Europe/Berlin');
   });
 });
+
+describe('attaching a preset', () => {
+  it('creates a series from a named preset', async () => {
+    // The web client asks for a preset rather than building an RRULE: the rule has its
+    // own escaping and TZID rules, and a subtly wrong one expands into the wrong days,
+    // which is much harder to notice than a rejected one.
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/items',
+      payload: { categoryId, title: 'Water the plants' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/items/${created.json().item.id}/recurrence`,
+      payload: { preset: 'weekly', anchorDate: '2026-03-02' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().occurrences.length).toBeGreaterThan(0);
+  });
+
+  it('anchors on the start date it was given', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/items',
+      payload: { categoryId, title: 'Weekly review' },
+    });
+    const id = created.json().item.id;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/items/${id}/recurrence`,
+      payload: { preset: 'weekly', anchorDate: '2026-03-04' },
+    });
+
+    const occurrences = response.json().occurrences as Array<{ occurrenceDate: string }>;
+    expect(occurrences[0]?.occurrenceDate).toBe('2026-03-04');
+  });
+
+  it('rejects a preset it does not know', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/items',
+      payload: { categoryId, title: 'Something' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/items/${created.json().item.id}/recurrence`,
+      payload: { preset: 'fortnightly-ish' },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('refuses a request naming neither a preset nor a rule', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/items',
+      payload: { categoryId, title: 'Something' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/items/${created.json().item.id}/recurrence`,
+      payload: { anchorDate: '2026-03-04' },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('takes a time of day with the preset', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/items',
+      payload: { categoryId, title: 'Standup' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/items/${created.json().item.id}/recurrence`,
+      payload: { preset: 'weekdays', anchorDate: '2026-03-02', startTime: '09:30' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect((response.json().occurrences as Array<{ whenAt: string }>)[0]?.whenAt).toContain(
+      'T09:30',
+    );
+  });
+
+  it('rejects a nonsense time of day', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/items',
+      payload: { categoryId, title: 'Standup' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/items/${created.json().item.id}/recurrence`,
+      payload: { preset: 'daily', startTime: 'half past nine' },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('still accepts a raw rule', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/items',
+      payload: { categoryId, title: 'Raw rule' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/items/${created.json().item.id}/recurrence`,
+      payload: { rrule: 'FREQ=WEEKLY;BYDAY=MO', anchorDate: '2026-03-02' },
+    });
+
+    expect(response.statusCode).toBe(201);
+  });
+});

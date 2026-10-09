@@ -10,6 +10,7 @@
  * would mean three screens implementing the same rule slightly differently.
  */
 
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
@@ -34,10 +35,13 @@ import {
   useUpdateItem,
 } from '@/lib/hooks';
 import { apiFetch } from '@/lib/api';
+import { keys } from '@/lib/query-keys';
 import { useDocumentTitle } from '@/lib/document-title';
 import { validateItem } from '@/lib/item-editor';
 import { fromLocalInputValue, toLocalInputValue } from '@/components/items/field-editor';
 import { formatDateTime } from '@/lib/item-list/format';
+import { todayIso } from '@/lib/calendar';
+import { RecurrenceSection } from '@/components/items/recurrence-section';
 import type { FieldValue } from '@/lib/types';
 
 export function ItemPage() {
@@ -80,6 +84,9 @@ export function ItemPage() {
   }, [item?.id]);
 
   useDocumentTitle(item?.title ?? 'Item');
+
+  // The series expands in this zone, so it is read from settings rather than guessed.
+  const timezone = useTimezone();
 
   const definitions = useMemo(() => {
     if (!item) {
@@ -308,6 +315,13 @@ export function ItemPage() {
         </CardContent>
       </Card>
 
+      <RecurrenceSection
+        item={item}
+        today={todayIso()}
+        timezone={timezone}
+        onChanged={() => void query.refetch()}
+      />
+
       <Activity itemId={item.id} />
 
       <div className="flex items-center gap-2">
@@ -324,6 +338,28 @@ export function ItemPage() {
       </div>
     </Page>
   );
+}
+
+/**
+ * The configured timezone.
+ *
+ * Read for the recurrence section only. Guessing the zone here would mean a series
+ * silently anchored somewhere other than where its owner lives, which produces dates that
+ * are subtly wrong in exactly the way nobody notices.
+ */
+function useTimezone(): string | undefined {
+  const query = useQuery({
+    queryKey: keys.settings,
+    queryFn: async () => {
+      const response = await apiFetch.get<{ settings: Array<{ key: string; value: unknown }> }>(
+        '/settings',
+      );
+      return response.settings;
+    },
+  });
+
+  const entry = query.data?.find((setting: { key: string }) => setting.key === 'app.timezone');
+  return typeof entry?.value === 'string' ? entry.value : undefined;
 }
 
 /**

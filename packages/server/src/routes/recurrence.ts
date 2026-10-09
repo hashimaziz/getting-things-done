@@ -9,12 +9,14 @@
 import {
   RECURRENCE_PRESETS,
   addDays,
+  applyPreset,
   describeRecurrence,
   expandOccurrences,
   parseRecurrence,
   withRecurrenceDtstart,
   type IsoDate,
   type Item,
+  type TimeOfDay,
 } from '@gtd/core';
 import { createRecurrenceService } from '@gtd/db';
 import { z } from 'zod';
@@ -25,19 +27,47 @@ import { expandItem } from './item-helpers.js';
 
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD');
 
-const attachSchema = z.object({
-  rrule: z.string().min(1).max(500),
-  timezone: z.string().min(1).max(64).optional(),
-  anchorDate: isoDateSchema.optional(),
-  until: isoDateSchema.nullish(),
-  count: z.number().int().min(1).max(10_000).nullish(),
-  horizonDays: z.number().int().min(0).max(365).optional(),
-});
+/**
+ * Either a raw rule or a named preset.
+ *
+ * The preset path exists so the web client never has to construct an RRULE string. An
+ * RRULE is a serialisation with its own escaping and TZID rules, and a browser building
+ * one is a browser that can build a subtly wrong one — which then expands into the wrong
+ * days and is much harder to notice than a rejected rule. Core owns that translation.
+ */
+const attachSchema = z
+  .object({
+    preset: z.string().min(1).max(64).optional(),
+    /** A time of day for the series, as `HH:MM`. */
+    startTime: z
+      .string()
+      .regex(/^\d{2}:\d{2}$/)
+      .optional(),
+    rrule: z.string().min(1).max(500).optional(),
+    timezone: z.string().min(1).max(64).optional(),
+    anchorDate: isoDateSchema.optional(),
+    until: isoDateSchema.nullish(),
+    count: z.number().int().min(1).max(10_000).nullish(),
+    horizonDays: z.number().int().min(0).max(365).optional(),
+  })
+  .refine((value) => value.preset !== undefined || value.rrule !== undefined, {
+    message: 'Give either a preset or an rrule',
+  });
 
 const materializeSchema = z.object({
   horizonDays: z.number().int().min(0).max(365).optional(),
   from: isoDateSchema.optional(),
 });
+
+/** `HH:MM` into core's time shape. Null when absent, so "no time" stays expressible. */
+function parseTimeOfDay(raw: string | undefined): TimeOfDay | null {
+  if (raw === undefined) {
+    return null;
+  }
+  // The schema has already validated the shape, so both parts are present.
+  const [hour = 0, minute = 0] = raw.split(':').map(Number);
+  return { hour, minute };
+}
 
 /** Preview does not need an rrule to be optional, only to be validated. */
 const previewSchema = z.object({
@@ -91,9 +121,38 @@ export function registerRecurrenceRoutes(app: FastifyInstance): void {
 
   app.post<{ Params: { id: string } }>('/api/items/:id/recurrence', async (request, reply) => {
     const body = attachSchema.parse(request.body);
-    const result = withRecurrenceErrors(() =>
-      service().attachSeries(request.params.id, compact(body)),
-    );
+
+    const result = withRecurrenceErrors(() => {
+      if (body.preset !== undefined) {
+        /*
+         * The preset is resolved to a rule here, in the package that owns the
+         * translation. The alternative — asking the browser to assemble an RRULE — puts
+         * the escaping and TZID rules in a second implementation, and a subtly wrong rule
+         * expands into the wrong days, which is far harder to notice than a rejected one.
+         */
+        const spec = applyPreset(body.preset, {
+          anchorDate: body.anchorDate ?? app.today(),
+          timezone: body.timezone ?? app.repos.settings.getKnown('app.timezone') ?? 'UTC',
+          timeOfDay: parseTimeOfDay(body.startTime),
+          until: body.until ?? null,
+          count: body.count ?? null,
+        });
+
+        return service().attachSeries(request.params.id, {
+          rrule: spec.rrule,
+          ...(body.timezone === undefined ? {} : { timezone: body.timezone }),
+          ...(body.anchorDate === undefined ? {} : { anchorDate: body.anchorDate }),
+          ...(body.until === undefined ? {} : { until: body.until }),
+          ...(body.count === undefined ? {} : { count: body.count }),
+          ...(body.horizonDays === undefined ? {} : { horizonDays: body.horizonDays }),
+        });
+      }
+
+      return service().attachSeries(request.params.id, {
+        ...compact(body),
+        rrule: body.rrule as string,
+      });
+    });
 
     return reply.status(201).send({
       item: expand(result.item),
