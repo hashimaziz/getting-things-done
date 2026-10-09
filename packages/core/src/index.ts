@@ -6,5 +6,6 @@ export * from './fields/index.js';
 export * from './filters/index.js';
 export * from './gtd/index.js';
 export * from './ids.js';
+export * from './invariants.js';
 export * from './metrics/index.js';
 export * from './recurrence/index.js';
