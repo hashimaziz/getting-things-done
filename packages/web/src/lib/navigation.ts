@@ -102,6 +102,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: 'LayoutDashboard', emphasis: 'secondary' },
       { to: '/capture', label: 'Capture', icon: 'Inbox', hint: 'C', emphasis: 'secondary' },
+      { to: '/clarify', label: 'Clarify', icon: 'ListChecks', emphasis: 'secondary' },
       ...CONTAINER_NAV.map<NavItem>((spec) => ({
         to: `/list/${spec.container}`,
         label: spec.label,

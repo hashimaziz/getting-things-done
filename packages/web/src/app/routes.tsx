@@ -19,6 +19,8 @@ import { SetupWizard } from '@/pages/setup-wizard';
 import { ShortcutSettings } from '@/pages/shortcut-settings';
 import { ListPage } from '@/pages/list-page';
 import { ItemPage } from '@/pages/item-page';
+import { CapturePage } from '@/pages/capture-page';
+import { ClarifyPage } from '@/pages/clarify-page';
 
 export function createRoutes(): RouteObject[] {
   return [
@@ -46,7 +48,8 @@ export function createRoutes(): RouteObject[] {
           path: '/dashboard',
           element: <ComingSoon title="Dashboard" feature="Dashboard widgets" />,
         },
-        { path: '/capture', element: <ComingSoon title="Capture" feature="Quick capture" /> },
+        { path: '/capture', element: <CapturePage /> },
+        { path: '/clarify', element: <ClarifyPage /> },
         { path: '/list/:container', element: <ListPage /> },
         { path: '/item/:id', element: <ItemPage /> },
         {

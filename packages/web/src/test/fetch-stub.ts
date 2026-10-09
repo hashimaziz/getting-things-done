@@ -19,21 +19,35 @@ export interface StubbedRoute {
   status?: number;
 }
 
+export interface RecordedCall {
+  method: string;
+  path: string;
+  search: URLSearchParams;
+  /** The parsed JSON body, or undefined for a request without one. */
+  body: Record<string, unknown> | undefined;
+}
+
 export interface FetchStub {
-  /** Every request made, in order, as `{ method, path, search }`. */
-  readonly calls: Array<{ method: string; path: string; search: URLSearchParams }>;
+  /** Every request made, in order. */
+  readonly calls: RecordedCall[];
+  /** The body of the most recent call with the given method and path suffix. */
+  lastBody: (method: string, pathSuffix: string) => Record<string, unknown> | undefined;
   restore: () => void;
 }
 
 export function stubFetch(routes: StubbedRoute[]): FetchStub {
-  const calls: FetchStub['calls'] = [];
+  const calls: RecordedCall[] = [];
 
   const impl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(raw, 'http://localhost');
     const method = (init?.method ?? 'GET').toUpperCase();
+    const body =
+      typeof init?.body === 'string'
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : undefined;
 
-    calls.push({ method, path: url.pathname, search: url.searchParams });
+    calls.push({ method, path: url.pathname, search: url.searchParams, body });
 
     const route = routes.find(
       (candidate) =>
@@ -66,6 +80,9 @@ export function stubFetch(routes: StubbedRoute[]): FetchStub {
 
   return {
     calls,
+    lastBody: (method, pathSuffix) =>
+      [...calls].reverse().find((call) => call.method === method && call.path.endsWith(pathSuffix))
+        ?.body,
     restore: () => vi.unstubAllGlobals(),
   };
 }
