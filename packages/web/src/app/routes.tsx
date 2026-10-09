@@ -18,6 +18,7 @@ import { SetupGate, SetupRedirect } from '@/components/setup-gate';
 import { SetupWizard } from '@/pages/setup-wizard';
 import { ShortcutSettings } from '@/pages/shortcut-settings';
 import { ListPage } from '@/pages/list-page';
+import { ItemPage } from '@/pages/item-page';
 
 export function createRoutes(): RouteObject[] {
   return [
@@ -47,6 +48,7 @@ export function createRoutes(): RouteObject[] {
         },
         { path: '/capture', element: <ComingSoon title="Capture" feature="Quick capture" /> },
         { path: '/list/:container', element: <ListPage /> },
+        { path: '/item/:id', element: <ItemPage /> },
         {
           path: '/calendar',
           element: <ComingSoon title="Calendar" feature="Week and month grid" />,

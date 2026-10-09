@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createMemoryRouter } from 'react-router';
 import type { ReactElement } from 'react';
+import { Toaster } from 'sonner';
 import { createRoutes } from '../app/routes';
 import { ThemeProvider } from '../lib/theme-provider';
 
@@ -32,6 +33,13 @@ export function renderApp(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <RouterProvider router={router} />
+        {/*
+          The real application renders toasts, and several screens report the outcome
+          of an action through one. Without the toaster here, a test asserting "the
+          server said the move is illegal" has nothing to assert against, and the
+          component could drop the message entirely without a failure.
+        */}
+        <Toaster />
       </ThemeProvider>
     </QueryClientProvider>,
   );
@@ -61,7 +69,10 @@ export function renderWithProviders(ui: ReactElement) {
   return {
     ...render(
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider>{ui}</ThemeProvider>
+        <ThemeProvider>
+          {ui}
+          <Toaster />
+        </ThemeProvider>
       </QueryClientProvider>,
     ),
     user: userEvent.setup(),
