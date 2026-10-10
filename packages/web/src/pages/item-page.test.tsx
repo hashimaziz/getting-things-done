@@ -262,12 +262,58 @@ describe('lifecycle actions', () => {
   });
 
   it('offers to restore a trashed item', async () => {
-    lastStub = stubFetch(
-      routes([], item({ container: 'trash', trashedAt: '2026-03-02T10:00:00.000Z' })),
-    );
+    const trashed = item({ id: 'i1', container: 'trash' });
+    lastStub = stubFetch([
+      ...BASE,
+      { path: '/api/items/i1', body: { item: trashed } },
+      { path: '/api/items/i1/history', body: { entries: [] } },
+    ]);
     renderApp('/item/i1');
 
-    expect(await screen.findByRole('button', { name: 'Restore' })).toBeInTheDocument();
+    // Named for where the item goes, because "Restore" implies it returns to where it
+    // was — and it does not. It comes back to the inbox to be clarified again.
+    expect(await screen.findByRole('button', { name: 'Restore to inbox' })).toBeInTheDocument();
+  });
+
+  it('restores with the verb the server will accept, not as a move', async () => {
+    /*
+     * This is the bug. Restore was sent as `move` to next actions, and the server
+     * refuses that as an illegal transition — correctly, since trash leads only to the
+     * inbox. So the button always failed, and the person was left with an error and no
+     * way to get the item back.
+     */
+    const trashed = item({ container: 'trash', trashedAt: '2026-03-02T10:00:00.000Z' });
+    lastStub = stubFetch([
+      ...routes([], trashed),
+      {
+        path: '/api/items/i1/restore',
+        method: 'POST',
+        body: { item: { ...trashed, container: 'inbox', trashedAt: null } },
+      },
+      {
+        path: '/api/items/i1/move',
+        method: 'POST',
+        status: 409,
+        body: {
+          error: {
+            code: 'illegal_transition',
+            message: 'Cannot move an item from trash to next_action',
+          },
+        },
+      },
+    ]);
+    const { user } = renderApp('/item/i1');
+
+    await user.click(await screen.findByRole('button', { name: 'Restore to inbox' }));
+
+    await waitFor(() => {
+      expect(
+        lastStub?.calls.some(
+          (call) => call.method === 'POST' && call.path === '/api/items/i1/restore',
+        ),
+      ).toBe(true);
+    });
+    expect(lastStub?.calls.some((call) => call.path.endsWith('/move'))).toBe(false);
   });
 
   it('explains a refused move instead of silently failing', async () => {

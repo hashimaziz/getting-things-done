@@ -15,6 +15,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { ArrowRight, Check } from 'lucide-react';
 import {
   Button,
   Card,
@@ -27,9 +28,16 @@ import {
 import { Page, PageHeader } from '@/components/layout/app-shell';
 import { useCategories, useItems, useMoveItem } from '@/lib/hooks';
 import { useDocumentTitle } from '@/lib/document-title';
-import { CLARIFY_QUESTIONS, decide, describeDecision, type ClarifyKind } from '@/lib/clarify';
+import {
+  CLARIFY_DESTINATIONS,
+  CLARIFY_QUESTIONS,
+  decide,
+  describeDecision,
+  type ClarifyKind,
+} from '@/lib/clarify';
 import type { Person } from '@/lib/types';
 import { apiFetch } from '@/lib/api';
+import { toast } from 'sonner';
 
 /** The decision a delegation always produces, for describing it before committing. */
 const DELEGATE_DECISION = { kind: 'delegate', container: 'waiting', reason: '' } as const;
@@ -48,6 +56,15 @@ export function ClarifyPage() {
 
   const [waitingOn, setWaitingOn] = useState('');
   const [followUp, setFollowUp] = useState('');
+  /**
+   * The last decision, kept after the item has left the screen.
+   *
+   * Without it the card simply changes. Someone answering a question cannot tell
+   * whether their answer did anything, whether the next item is the same item, or
+   * whether the page just reloaded — and the obvious conclusion from that silence is
+   * that the button is broken.
+   */
+  const [lastMove, setLastMove] = useState<{ title: string; outcome: string } | null>(null);
 
   useEffect(() => {
     // People are needed only for the delegation question, and only then are they
@@ -86,6 +103,13 @@ export function ClarifyPage() {
 
     try {
       await move.mutateAsync({ id: current.id, container: result.decision.container });
+
+      // Said in the order a person would tell it: which item, and what became of it.
+      // The title comes first because the item is about to disappear from the screen.
+      const outcome = describeDecision(result.decision, { personName: chosenPerson?.name });
+      setLastMove({ title: current.title, outcome });
+      toast.success(`${current.title} → ${outcome}`);
+
       setProblem(null);
       setAnswered((count) => count + 1);
       setWaitingOn('');
@@ -144,6 +168,20 @@ export function ClarifyPage() {
         description={`${total} left in the inbox${categoryName === '' ? '' : ` · captured as ${categoryName}`}`}
       />
 
+      {/*
+        A running account of the session, kept above the card so it survives the item
+        changing underneath it. Without it, each answer looks like it did nothing and
+        the next card looks like it appeared on its own.
+      */}
+      {lastMove === null ? null : (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+          <Check aria-hidden className="size-3.5 text-foreground" />
+          <span className="font-medium text-foreground">{lastMove.title}</span>
+          <span>moved to {lastMove.outcome.toLowerCase()}</span>
+          {answered} this session
+        </p>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>{current.title}</CardTitle>
@@ -171,6 +209,9 @@ export function ClarifyPage() {
                     onClick={() => void answer(entry.kind)}
                   >
                     {entry.question}
+                    {/* The consequence, on the control that causes it. */}
+                    <ArrowRight aria-hidden className="size-3 opacity-60" />
+                    {CLARIFY_DESTINATIONS[entry.kind]}
                   </Button>
                   <span className="text-xs text-muted-foreground">{entry.hint}</span>
                 </div>

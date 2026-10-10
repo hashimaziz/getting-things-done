@@ -124,6 +124,23 @@ export function decide(
   }
 }
 
+/**
+ * Where each answer puts the item.
+ *
+ * Shown on the button itself. "Is it actionable?" asks a question; a person who
+ * answers it is entitled to know the item is about to become a next action, and the
+ * only way to find that out is to answer and then go and look at a list. An answer
+ * whose consequence is visible before it is given is a decision; one that is not is a
+ * guess with a loading spinner.
+ */
+export const CLARIFY_DESTINATIONS: Record<ClarifyKind, string> = {
+  action: 'Next actions',
+  someday: 'Someday / maybe',
+  delegate: 'Waiting for',
+  reference: 'Reference',
+  delete: 'Trash',
+};
+
 /** The questions, in the order they should be asked. */
 export const CLARIFY_QUESTIONS: Array<{
   kind: ClarifyKind;

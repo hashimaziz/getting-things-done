@@ -31,6 +31,7 @@ import {
   useCategories,
   useFieldDefinitions,
   useItem,
+  useItemAction,
   useMoveItem,
   useUpdateItem,
 } from '@/lib/hooks';
@@ -90,6 +91,7 @@ function ItemEditor({ item }: { item: Item }) {
   const fields = useFieldDefinitions();
   const update = useUpdateItem(item.id);
   const move = useMoveItem();
+  const lifecycle = useItemAction(item.id);
 
   /*
    * The draft is the item as it was loaded, and editing it moves away from that
@@ -191,6 +193,23 @@ function ItemEditor({ item }: { item: Item }) {
     }
   };
 
+  /**
+   * Restore, as its own verb rather than a move to next actions.
+   *
+   * Trash leads only to the inbox, so "restore" sent as a move is an illegal
+   * transition and the server refuses it. It has to say what it means: the item comes
+   * back to the inbox to be clarified again, not into a list of things to do.
+   */
+  const restore = async (): Promise<void> => {
+    try {
+      await lifecycle.mutateAsync('restore');
+      toast.success('Restored to the inbox');
+      onChanged();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'That could not be restored');
+    }
+  };
+
   const categoryName =
     (categories.data ?? []).find((category) => category.id === item.categoryId)?.name ??
     'Unknown category';
@@ -216,8 +235,8 @@ function ItemEditor({ item }: { item: Item }) {
                 Trash
               </Button>
             ) : (
-              <Button size="sm" variant="outline" onClick={() => act('next_action', 'Restored')}>
-                Restore
+              <Button size="sm" variant="outline" onClick={() => void restore()}>
+                Restore to inbox
               </Button>
             )}
           </>

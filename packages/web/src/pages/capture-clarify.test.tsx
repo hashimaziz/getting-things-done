@@ -302,9 +302,11 @@ describe('clarify', () => {
     lastStub = stubFetch(inboxRoutes([item({ id: 'i1' })]));
     renderApp('/clarify');
 
-    expect(await screen.findByRole('button', { name: 'Is it actionable?' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Is it someday / maybe?' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Are you waiting on someone?' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Is it actionable\?/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Is it someday/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Are you waiting on someone\?/ }),
+    ).toBeInTheDocument();
   });
 
   it('offers deleting as an answer, because it is one', async () => {
@@ -312,7 +314,7 @@ describe('clarify', () => {
     renderApp('/clarify');
 
     expect(
-      await screen.findByRole('button', { name: 'Do you still need it?' }),
+      await screen.findByRole('button', { name: /Do you still need it\?/ }),
     ).toBeInTheDocument();
   });
 
@@ -320,7 +322,7 @@ describe('clarify', () => {
     lastStub = stubFetch(inboxRoutes([item({ id: 'i1' })]));
     const { user } = renderApp('/clarify');
 
-    await user.click(await screen.findByRole('button', { name: 'Is it actionable?' }));
+    await user.click(await screen.findByRole('button', { name: /Is it actionable\?/ }));
 
     await waitFor(() => {
       expect(
@@ -333,7 +335,7 @@ describe('clarify', () => {
     lastStub = stubFetch(inboxRoutes([item({ id: 'i1' })]));
     const { user } = renderApp('/clarify');
 
-    await user.click(await screen.findByRole('button', { name: 'Are you waiting on someone?' }));
+    await user.click(await screen.findByRole('button', { name: /Are you waiting on someone\?/ }));
 
     expect(await screen.findByText('Who is it waiting on?')).toBeInTheDocument();
     expect(lastStub?.calls.some((entry) => entry.path.endsWith('/move'))).toBe(false);
@@ -344,7 +346,7 @@ describe('clarify', () => {
     const { user } = renderApp('/clarify');
 
     await user.selectOptions(await screen.findByLabelText('Waiting on'), 'p1');
-    await user.click(screen.getByRole('button', { name: 'Are you waiting on someone?' }));
+    await user.click(screen.getByRole('button', { name: /Are you waiting on someone\?/ }));
 
     expect(await screen.findByText('When will you chase it?')).toBeInTheDocument();
   });
@@ -355,7 +357,7 @@ describe('clarify', () => {
 
     await user.selectOptions(await screen.findByLabelText('Waiting on'), 'p1');
     await user.type(screen.getByLabelText('Follow up on'), '2026-03-10');
-    await user.click(screen.getByRole('button', { name: 'Are you waiting on someone?' }));
+    await user.click(screen.getByRole('button', { name: /Are you waiting on someone\?/ }));
 
     await waitFor(() => {
       expect(
@@ -371,26 +373,108 @@ describe('clarify', () => {
     await user.selectOptions(await screen.findByLabelText('Waiting on'), 'p1');
 
     // "Waiting on Dana." is understood instantly; it is the last chance to notice the
-    // wrong answer.
-    expect(await screen.findByText(/waiting on dana/i)).toBeInTheDocument();
+    // wrong answer. Matched on the card's own sentence, because the toast says the
+    // same words about a different item and outlives it.
+    expect(
+      await screen.findByText(/^Delegating will move this to waiting on dana\.$/),
+    ).toBeInTheDocument();
   });
 
   it('moves a reference item to reference', async () => {
     lastStub = stubFetch(inboxRoutes([item({ id: 'i1' })]));
     const { user } = renderApp('/clarify');
 
-    await user.click(await screen.findByRole('button', { name: 'Is it just reference?' }));
+    await user.click(await screen.findByRole('button', { name: /Is it just reference\?/ }));
 
     await waitFor(() => {
       expect(lastStub?.calls.some((entry) => entry.path.endsWith('/move'))).toBe(true);
     });
   });
 
+  it('says where each answer puts the item, before it is given', async () => {
+    lastStub = stubFetch(inboxRoutes([item({ id: 'i1' })]));
+    renderApp('/clarify');
+
+    await screen.findByRole('button', { name: /Is it actionable\?/ });
+
+    // The consequence is on the button that causes it. Without this, the only way to
+    // learn where an item went is to go and look for it afterwards.
+    expect(
+      screen.getByRole('button', { name: /Is it actionable\?.*Next actions/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Are you waiting on someone\?.*Waiting for/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Is it just reference\?.*Reference/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Do you still need it\?.*Trash/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('says what became of the item just answered', async () => {
+    lastStub = stubFetch(inboxRoutes([item({ id: 'i1', title: 'Renew the passport' })]));
+    const { user } = renderApp('/clarify');
+
+    await user.click(await screen.findByRole('button', { name: /Is it actionable\?/ }));
+
+    /*
+     * The card silently changes to the next item otherwise, and there is no way to tell
+     * that the answer did anything — or whether this is the same item, or a fresh page.
+     * The line stays put while the card underneath it changes.
+     */
+    // The title appears twice while the stub still returns the same item: once in the
+    // account of what just happened, once as the card. The account is what matters.
+    expect((await screen.findAllByText('Renew the passport')).length).toBeGreaterThan(0);
+    expect(screen.getByText(/moved to a next action/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 this session/)).toBeInTheDocument();
+  });
+
+  it('names the person when the item was delegated', async () => {
+    lastStub = stubFetch(inboxRoutes([item({ id: 'i1', title: 'Send the contract' })]));
+    const { user } = renderApp('/clarify');
+
+    await user.selectOptions(await screen.findByLabelText('Waiting on'), 'p1');
+    await user.type(screen.getByLabelText('Follow up on'), '2026-03-10');
+    await user.click(screen.getByRole('button', { name: /Are you waiting on someone\?/ }));
+
+    // "Waiting on Dana" rather than "Waiting for", which is what it is called
+    // everywhere else in the app.
+    expect(await screen.findByText(/moved to waiting on dana/i)).toBeInTheDocument();
+  });
+
+  it('does not claim a move happened when the server refused it', async () => {
+    // Replaces the inbox routes rather than adding to them: the stub answers with the
+    // first route that matches, so appending a refusal would be answered by the
+    // success route that came first.
+    lastStub = stubFetch(
+      inboxRoutes([item({ id: 'i1', title: 'Renew the passport' })]).map((route) =>
+        route.path === '/api/items/:id/move'
+          ? {
+              path: route.path,
+              method: 'POST' as const,
+              status: 409,
+              body: { error: { code: 'illegal_transition', message: 'not allowed from there' } },
+            }
+          : route,
+      ),
+    );
+    const { user } = renderApp('/clarify');
+
+    await user.click(await screen.findByRole('button', { name: /Is it actionable\?/ }));
+
+    // A line saying it moved when it did not is worse than saying nothing: it is a
+    // record of a decision that never took effect.
+    expect(await screen.findByText('not allowed from there')).toBeInTheDocument();
+    expect(screen.queryByText(/moved to/i)).not.toBeInTheDocument();
+  });
+
   it('moves a someday item out of the inbox and off the calendar', async () => {
     lastStub = stubFetch(inboxRoutes([item({ id: 'i1' })]));
     const { user } = renderApp('/clarify');
 
-    await user.click(await screen.findByRole('button', { name: 'Is it someday / maybe?' }));
+    await user.click(await screen.findByRole('button', { name: /Is it someday/ }));
 
     await waitFor(() => {
       const call = lastStub?.calls.find((entry) => entry.path.endsWith('/move'));

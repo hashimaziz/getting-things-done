@@ -225,6 +225,31 @@ export function useMoveItem() {
   });
 }
 
+/**
+ * The lifecycle verbs: complete, reopen, trash, restore.
+ *
+ * These exist as endpoints rather than as container patches, and the difference is
+ * not cosmetic. `trash` may only go to `inbox` — a deleted item going straight back
+ * into next actions would be a deletion that un-deletes itself — so "restore" sent as
+ * a move is refused by the server as an illegal transition. That refusal is correct,
+ * and the fix is to call the verb that means what it says.
+ */
+export type ItemLifecycleAction = 'complete' | 'reopen' | 'trash' | 'restore';
+
+export function useItemAction(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (action: ItemLifecycleAction) =>
+      (await apiFetch.post<{ item: Item }>(`/items/${id}/${action}`, {})).item,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.items.all });
+      void queryClient.invalidateQueries({ queryKey: keys.metrics.all });
+      void queryClient.invalidateQueries({ queryKey: keys.review.all });
+      void queryClient.invalidateQueries({ queryKey: keys.archive.all });
+    },
+  });
+}
+
 /* ------------------------------------------------------------------- lists */
 
 export interface ItemListParams {
