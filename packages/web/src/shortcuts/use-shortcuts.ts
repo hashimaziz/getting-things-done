@@ -123,5 +123,5 @@ export function useShortcuts(options: ShortcutOptions): void {
 
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
-  }, [bindings, handlers, enabled]);
+  }, [bindings, handlers, enabled, platform]);
 }

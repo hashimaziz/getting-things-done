@@ -21,6 +21,7 @@ import { ItemTable } from '@/components/items/item-table';
 import { useFieldDefinitions, useItems, useProjects } from '@/lib/hooks';
 import { useDocumentTitle } from '@/lib/document-title';
 import { containerLabel } from '@/lib/navigation';
+import { todayIso } from '@/lib/calendar';
 import { columnStore, useColumns, viewKey } from '@/lib/item-list/column-store';
 import {
   applySort,
@@ -72,7 +73,9 @@ export function ListPage() {
     [searchParams, container, valid],
   );
 
-  const definitions = fields.data ?? [];
+  // Memoised so the column list is not rebuilt on every render while the definitions
+  // are still loading and this expression keeps returning a new empty array.
+  const definitions = useMemo(() => fields.data ?? [], [fields.data]);
   const view = viewKey(container);
   const columns = useMemo(
     () => columnsFor(view, container, definitions),
@@ -90,25 +93,29 @@ export function ListPage() {
     offset,
   });
 
-  // A page beyond the end after a filter change or a completion elsewhere. Clamped
-  // rather than left: an empty table with no explanation reads as data loss.
-  useEffect(() => {
-    const total = query.data?.total;
-    if (total === undefined) {
-      return;
-    }
-    const clamped = clampPage(state.page, total, state.pageSize);
-    if (clamped !== state.page) {
-      applyState({ ...state, page: clamped });
-    }
-  }, [query.data?.total, state]);
-
   const applyState = useCallback(
     (next: ListViewState) => {
       setSearchParams(serialiseViewState(next, container), { replace: false });
     },
     [setSearchParams, container],
   );
+
+  /*
+   * A page beyond the end, after a filter change or after items were completed on
+   * another page. Clamped rather than left: an empty table with no explanation reads as
+   * data loss, which is the one interpretation of this screen that is always wrong.
+   */
+  const requestedPage = state.page;
+  const resultTotal = query.data?.total;
+  useEffect(() => {
+    if (resultTotal === undefined) {
+      return;
+    }
+    const clamped = clampPage(requestedPage, resultTotal, state.pageSize);
+    if (clamped !== requestedPage) {
+      applyState({ ...state, page: clamped });
+    }
+  }, [resultTotal, requestedPage, state, state.pageSize, applyState]);
 
   const labels = useMemo(
     () => ({
@@ -190,7 +197,7 @@ export function ListPage() {
             items={query.data?.items ?? []}
             columns={columns}
             definitions={definitions}
-            today={new Date().toISOString().slice(0, 10)}
+            today={todayIso()}
             sort={state.sort}
             labels={labels}
             onSort={(field, additive) => applyState(applySort(state, field, { additive }))}

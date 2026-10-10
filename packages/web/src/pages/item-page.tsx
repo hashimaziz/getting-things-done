@@ -10,7 +10,7 @@
  * would mean three screens implementing the same rule slightly differently.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
@@ -42,77 +42,113 @@ import { fromLocalInputValue, toLocalInputValue } from '@/components/items/field
 import { formatDateTime } from '@/lib/item-list/format';
 import { todayIso } from '@/lib/calendar';
 import { RecurrenceSection } from '@/components/items/recurrence-section';
-import type { FieldValue } from '@/lib/types';
+import type { FieldValue, Item } from '@/lib/types';
 
 export function ItemPage() {
   const { id = '' } = useParams();
-  const navigate = useNavigate();
-
   const query = useItem(id);
+
+  if (query.isPending) {
+    return (
+      <Page>
+        <PageHeader title="Loading" />
+      </Page>
+    );
+  }
+
+  if (query.isError || query.data === undefined) {
+    return (
+      <Page>
+        <PageHeader title="Not found" />
+        <p className="text-sm text-muted-foreground">
+          This item is not in the database. It may have been deleted, or the link may be out of
+          date.
+        </p>
+        <NotFoundLink />
+      </Page>
+    );
+  }
+
+  /*
+   * Keyed by id, so navigating from one item to another mounts a fresh editor with
+   * fresh state. The alternative — an effect that copies the new item's fields into
+   * existing state — has a window where the form shows the previous item's values,
+   * which is how someone saves one item's title onto another.
+   */
+  return <ItemEditor key={query.data.id} item={query.data} />;
+}
+
+function NotFoundLink() {
+  const navigate = useNavigate();
+  return <Button onClick={() => navigate('/list/inbox')}>Go to the inbox</Button>;
+}
+
+function ItemEditor({ item }: { item: Item }) {
+  const queryClient = useQueryClient();
+
   const categories = useCategories();
   const fields = useFieldDefinitions();
-  const update = useUpdateItem(id);
+  const update = useUpdateItem(item.id);
   const move = useMoveItem();
 
-  const [title, setTitle] = useState('');
-  const [notes, setNotes] = useState('');
-  const [estimate, setEstimate] = useState<string>('');
-  const [deadline, setDeadline] = useState('');
-  const [whenAt, setWhenAt] = useState('');
-  const [followUpAt, setFollowUpAt] = useState('');
-  const [waitingOn, setWaitingOn] = useState('');
-  const [values, setValues] = useState<Record<string, FieldValue>>({});
+  /*
+   * The draft is the item as it was loaded, and editing it moves away from that
+   * baseline. Initialised from props because this component is mounted per item, so
+   * there is never a "the item changed underneath me" case to reconcile.
+   */
+  const [title, setTitle] = useState(item.title);
+  const [notes, setNotes] = useState(item.notes ?? '');
+  const [estimate, setEstimate] = useState<string>(
+    item.estimateMinutes === null ? '' : String(item.estimateMinutes),
+  );
+  const [deadline, setDeadline] = useState(item.deadlineOn ?? '');
+  const [whenAt, setWhenAt] = useState(item.whenAt === null ? '' : toLocal(item.whenAt));
+  const [followUpAt, setFollowUpAt] = useState(
+    item.followUpAt === null ? '' : toLocal(item.followUpAt),
+  );
+  const [waitingOn] = useState(item.waitingOnPersonId ?? '');
+  const [values, setValues] = useState<Record<string, FieldValue>>(item.values ?? {});
   const [dirty, setDirty] = useState(false);
 
-  const item = query.data;
-
-  // Seeded from the item once it arrives. Keyed on the id so switching between two
-  // items does not leave the second one showing the first one's edits.
-  useEffect(() => {
-    if (!item) {
-      return;
-    }
-    setTitle(item.title);
-    setNotes(item.notes ?? '');
-    setEstimate(item.estimateMinutes === null ? '' : String(item.estimateMinutes));
-    setDeadline(item.deadlineOn ?? '');
-    setWhenAt(item.whenAt === null ? '' : toLocal(item.whenAt));
-    setFollowUpAt(item.followUpAt === null ? '' : toLocal(item.followUpAt));
-    setWaitingOn(item.waitingOnPersonId ?? '');
-    setValues(item.values ?? {});
-    setDirty(false);
-  }, [item?.id]);
-
-  useDocumentTitle(item?.title ?? 'Item');
+  useDocumentTitle(item.title || 'Item');
 
   // The series expands in this zone, so it is read from settings rather than guessed.
   const timezone = useTimezone();
 
-  const definitions = useMemo(() => {
-    if (!item) {
-      return [];
-    }
-    // Only the fields this item's category actually has, plus global ones.
-    return (fields.data ?? []).filter(
-      (definition) => definition.categoryId === null || definition.categoryId === item.categoryId,
-    );
-  }, [fields.data, item?.categoryId, item]);
+  /*
+   * Only the fields this item's category actually has, plus the global ones. The
+   * dependency is the category id rather than the whole item, so a refetch that
+   * returns an identical item does not rebuild the list.
+   */
+  const definitions = useMemo(
+    () =>
+      (fields.data ?? []).filter(
+        (definition) => definition.categoryId === null || definition.categoryId === item.categoryId,
+      ),
+    [fields.data, item.categoryId],
+  );
 
   const problems = useMemo(
     () =>
-      item
-        ? validateItem(definitions, values, {
-            title,
-            // Only checked for the containers where the rule applies. A next action
-            // with no hard date is ordinary; a calendar item without one is not a
-            // calendar item. The key is absent rather than undefined so the checker
-            // can tell "not applicable" from "set to nothing".
-            ...(item.container === 'calendar' ? { whenAt } : {}),
-            ...(item.container === 'waiting' ? { waitingOnPersonId: waitingOn, followUpAt } : {}),
-          })
-        : [],
-    [definitions, values, title, whenAt, waitingOn, followUpAt, item?.container],
+      validateItem(definitions, values, {
+        title,
+        // Only checked for the containers where the rule applies. A next action with
+        // no hard date is ordinary; a calendar item without one is not a calendar
+        // item. The key is absent rather than undefined so the checker can tell "not
+        // applicable" from "set to nothing".
+        ...(item.container === 'calendar' ? { whenAt } : {}),
+        ...(item.container === 'waiting' ? { waitingOnPersonId: waitingOn, followUpAt } : {}),
+      }),
+    [definitions, values, title, whenAt, waitingOn, followUpAt, item.container],
   );
+
+  /**
+   * After a change the server has the last word, so the cache is dropped rather than
+   * patched: attaching a series rewrites the item and creates occurrences.
+   */
+  const onChanged = (): void => {
+    void queryClient.invalidateQueries({ queryKey: keys.items.detail(item.id) });
+  };
 
   const change =
     <T,>(setter: (value: T) => void) =>
@@ -146,7 +182,7 @@ export function ItemPage() {
 
   const act = async (container: string, label: string): Promise<void> => {
     try {
-      await move.mutateAsync({ id, container });
+      await move.mutateAsync({ id: item.id, container });
       toast.success(label);
     } catch (error) {
       // The server owns the transition rules, so its refusal is the answer, not an
@@ -154,27 +190,6 @@ export function ItemPage() {
       toast.error(error instanceof Error ? error.message : 'That move is not allowed');
     }
   };
-
-  if (query.isPending) {
-    return (
-      <Page>
-        <PageHeader title="Loading" />
-      </Page>
-    );
-  }
-
-  if (query.isError || !item) {
-    return (
-      <Page>
-        <PageHeader title="Not found" />
-        <p className="text-sm text-muted-foreground">
-          This item is not in the database. It may have been deleted, or the link may be out of
-          date.
-        </p>
-        <Button onClick={() => navigate('/list/inbox')}>Go to the inbox</Button>
-      </Page>
-    );
-  }
 
   const categoryName =
     (categories.data ?? []).find((category) => category.id === item.categoryId)?.name ??
@@ -315,12 +330,7 @@ export function ItemPage() {
         </CardContent>
       </Card>
 
-      <RecurrenceSection
-        item={item}
-        today={todayIso()}
-        timezone={timezone}
-        onChanged={() => void query.refetch()}
-      />
+      <RecurrenceSection item={item} today={todayIso()} timezone={timezone} onChanged={onChanged} />
 
       <Activity itemId={item.id} />
 

@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
   {
@@ -42,10 +43,16 @@ export default tseslint.config(
   },
   {
     // Browser code needs the DOM globals; vitest globals are only defined in the
-    // web tests, and only there.
+    // web tests, and only there. The hooks rules come along with it because a
+    // dependency array that is quietly wrong is the same class of bug as a stale
+    // cache key: everything works until it does not.
     files: ['packages/web/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
     languageOptions: {
       globals: { ...globals.browser },
+    },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
     },
   },
   {

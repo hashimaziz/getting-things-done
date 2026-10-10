@@ -7,6 +7,8 @@
  * recognises as their actual commitments.
  */
 
+import { formatDate } from '@/lib/item-list/format';
+
 export interface RecurrencePreset {
   key: string;
   label: string;
@@ -116,7 +118,9 @@ export function validateChoice(choice: RecurrenceChoice): string | null {
  */
 export function estimatedOccurrences(choice: RecurrenceChoice, perDay: number): number {
   const days = Math.max(0, choice.horizonDays);
-  const base = days * perDay;
+  // Rounded here rather than at the call site: an estimate that is sometimes fractional
+  // invites a call site that forgets, and "about 13" is what this sentence wants to say.
+  const base = Math.round(days * perDay);
 
   if (choice.end.kind === 'after') {
     return Math.min(base, choice.end.count);
@@ -124,7 +128,7 @@ export function estimatedOccurrences(choice: RecurrenceChoice, perDay: number): 
 
   if (choice.end.kind === 'on' && choice.end.date >= choice.anchorDate) {
     const span = daysBetweenIso(choice.anchorDate, choice.end.date);
-    return Math.min(base, Math.max(1, span + 1) * perDay);
+    return Math.min(base, Math.round(Math.max(1, span + 1) * perDay));
   }
 
   return base;
@@ -169,17 +173,35 @@ function daysBetweenIso(from: string, to: string): number {
  * trust that a thing will keep happening.
  */
 export function describeChoice(choice: RecurrenceChoice, presetLabel: string): string {
-  const start = choice.anchorDate === '' ? 'a date not chosen yet' : `from ${choice.anchorDate}`;
+  // The start is named without its year, and the end carries the year only when the two
+  // fall in different ones. So "from 9 Oct … until 4 Jan 2027", and never
+  // "from 9 Oct 2026 … until 24 Dec 2026".
+  const start =
+    choice.anchorDate === ''
+      ? 'a date not chosen yet'
+      : `from ${describeDate(choice.anchorDate, choice.anchorDate)}`;
   const time = choice.startTime === '' ? 'all day' : `at ${choice.startTime}`;
 
   const end =
     choice.end.kind === 'never'
       ? 'forever'
       : choice.end.kind === 'on'
-        ? `until ${choice.end.date}`
+        ? // The year only earns its place when it is not the year already named: "until
+          // 3 Jan" reads fine beside "from 2 Dec", and "until 3 Jan 2027" does not.
+          `until ${describeDate(choice.end.date, choice.anchorDate)}`
         : `${choice.end.count} times`;
 
   return `${presetLabel}, ${start}, ${time}, ${end}.`;
+}
+
+/** A date as a person writes it, with the year only when it disambiguates. */
+function describeDate(value: string, sameYearAs?: string): string {
+  const formatted = formatDate(value);
+  if (value === '' || formatted === '') {
+    return value;
+  }
+  const year = value.slice(0, 4);
+  return year === sameYearAs?.slice(0, 4) ? formatted : `${formatted} ${year}`;
 }
 
 /**

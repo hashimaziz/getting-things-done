@@ -17,6 +17,7 @@ pnpm-debug.log*
 
 .vscode/
 .idea/
+.commandcode/
 
 data/
 *.sqlite

@@ -12,14 +12,14 @@ templates, archive browsing, settings, and headless capture.
   move controls.
 - Richer archive exploration: saved views, date ranges, activity feed presentation, and
   completion trends beyond the compact summary.
-- Better reference-data editors: category scoping, editing and deletion confirmation,
-  person search, and context ordering.
 - Import/export and backup verification for the local SQLite store.
+- Project review through the web client, including the stalled-project prompt.
 
 ## Longer-term possibilities
 
-- Optional capability providers such as local recommendations, while keeping core rules
-  deterministic and inspectable.
+- A local language model behind the existing recommendation provider seam, keeping the
+  deterministic rule-based provider as the baseline its output must beat. The seam, the
+  registry and the reasons are in place; only the model is missing.
 - Multi-device synchronization, only after the local data model and conflict policy are
   explicit.
 - Notifications for follow-up dates and weekly-review cadence.

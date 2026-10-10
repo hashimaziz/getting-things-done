@@ -94,17 +94,31 @@ export function RecurrenceSection({ item, today, timezone, onChanged }: Recurren
   const detach = useMutation({
     mutationFn: async () => apiFetch.delete(`/items/${item.id}/recurrence`),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['recurrence', item.id] });
       void queryClient.invalidateQueries({ queryKey: keys.items.all });
       toast.success('Series removed');
       onChanged();
     },
+    // Without this the button appears to do nothing, and the item keeps repeating.
+    onError: () => toast.error('The series could not be removed'),
   });
 
   const problem = validateChoice(choice);
+  /*
+   * Attaching before the presets arrive means committing to a frequency the user never
+   * saw named — the dropdown would be empty while the button still worked.
+   */
+  const presetsProblem = presets.isError
+    ? 'The list of frequencies could not be loaded.'
+    : presets.data === undefined
+      ? 'Loading frequencies…'
+      : presets.data.length === 0
+        ? 'No frequencies are configured.'
+        : null;
   const presetLabel =
     presets.data?.find((preset) => preset.key === choice.preset)?.label ?? choice.preset;
   const estimate = useMemo(
-    () => Math.round(estimatedOccurrences(choice, frequencyPerDay(choice.preset))),
+    () => estimatedOccurrences(choice, frequencyPerDay(choice.preset)),
     [choice],
   );
 
@@ -251,12 +265,12 @@ export function RecurrenceSection({ item, today, timezone, onChanged }: Recurren
           </p>
         </div>
 
-        <FieldError>{problem}</FieldError>
+        <FieldError>{problem ?? presetsProblem}</FieldError>
 
         <div className="flex items-center gap-2">
           <Button
             size="sm"
-            disabled={problem !== null || attach.isPending}
+            disabled={problem !== null || presetsProblem !== null || attach.isPending}
             onClick={() => attach.mutate()}
           >
             {attach.isPending ? 'Attaching…' : 'Make it repeat'}

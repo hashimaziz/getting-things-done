@@ -11,7 +11,7 @@
  * a past trip's packing list to fix next year's.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -47,8 +47,16 @@ export function ChecklistTemplatesPage() {
 
   const queryClient = useQueryClient();
   const [name, setName] = useState('');
-  const [entries, setEntries] = useState<string[]>(['']);
+  /*
+   * Steps carry an id from the moment they are typed, rather than being identified by
+   * their position. Deleting step two of three otherwise reuses the same DOM node for
+   * what is now step three, and the caret jumps into the wrong box.
+   */
+  const [entries, setEntries] = useState<Array<{ id: string; label: string }>>([
+    { id: 'draft_0', label: '' },
+  ]);
   const [editing, setEditing] = useState<string | null>(null);
+  const draftCount = useRef(0);
 
   const templates = useQuery({
     queryKey: keys.reference.templates,
@@ -60,17 +68,16 @@ export function ChecklistTemplatesPage() {
     mutationFn: async () =>
       apiFetch.post<{ template: ChecklistTemplate }>('/checklist-templates', {
         name: name.trim(),
-        // Ids are generated here because the server only stores what it is given, and a
-        // draft has no id yet.
+        // Blank rows are dropped rather than saved as blank steps: a checklist that
+        // contains an empty line reads as a step someone forgot to write.
         entries: entries
-          .map((label) => label.trim())
-          .filter((label) => label !== '')
-          .map((label, index) => ({ id: `step_${index}`, label })),
+          .map((entry) => ({ id: entry.id, label: entry.label.trim() }))
+          .filter((entry) => entry.label !== ''),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.reference.templates });
       setName('');
-      setEntries(['']);
+      setEntries([{ id: 'draft_0', label: '' }]);
       toast.success('Template saved');
     },
     onError: () => toast.error('That template could not be saved'),
@@ -82,9 +89,12 @@ export function ChecklistTemplatesPage() {
       void queryClient.invalidateQueries({ queryKey: keys.reference.templates });
       toast.success('Template deleted');
     },
+    // Silent here would mean the template stays on screen with no explanation, and the
+    // obvious conclusion is that the button is broken.
+    onError: () => toast.error('That template could not be deleted'),
   });
 
-  const steps = entries.map((entry) => entry.trim()).filter((entry) => entry !== '');
+  const steps = entries.filter((entry) => entry.label.trim() !== '');
   const problem =
     name.trim() === ''
       ? 'Give the template a name.'
@@ -113,14 +123,16 @@ export function ChecklistTemplatesPage() {
 
           <div className="flex flex-col gap-1">
             {entries.map((entry, index) => (
-              <div key={index} className="flex items-center gap-2">
+              <div key={entry.id} className="flex items-center gap-2">
                 <Input
                   aria-label={`Step ${index + 1}`}
                   placeholder="A step"
-                  value={entry}
+                  value={entry.label}
                   onChange={(event) =>
                     setEntries(
-                      entries.map((value, i) => (i === index ? event.target.value : value)),
+                      entries.map((value) =>
+                        value.id === entry.id ? { ...value, label: event.target.value } : value,
+                      ),
                     )
                   }
                 />
@@ -128,7 +140,7 @@ export function ChecklistTemplatesPage() {
                   variant="ghost"
                   size="icon"
                   aria-label={`Remove step ${index + 1}`}
-                  onClick={() => setEntries(entries.filter((_, i) => i !== index))}
+                  onClick={() => setEntries(entries.filter((value) => value.id !== entry.id))}
                 >
                   <Trash2 />
                 </Button>
@@ -138,7 +150,10 @@ export function ChecklistTemplatesPage() {
               size="sm"
               variant="outline"
               className="self-start"
-              onClick={() => setEntries([...entries, ''])}
+              onClick={() => {
+                draftCount.current += 1;
+                setEntries([...entries, { id: `draft_${draftCount.current}`, label: '' }]);
+              }}
             >
               <Plus />
               Add a step
@@ -221,9 +236,11 @@ function UseTemplate({ template, onDone }: { template: ChecklistTemplate; onDone
         .categories,
   });
 
+  const available = categories.data ?? [];
+  const first = categoryId !== '' ? categoryId : available[0]?.id;
+
   const create = useMutation({
     mutationFn: async () => {
-      const first = categoryId !== '' ? categoryId : (categories.data ?? [])[0]?.id;
       if (first === undefined) {
         throw new Error('Create a category first');
       }
@@ -274,13 +291,23 @@ function UseTemplate({ template, onDone }: { template: ChecklistTemplate; onDone
           </select>
         ) : null}
 
-        <Button size="sm" onClick={() => create.mutate()} disabled={create.isPending}>
+        <Button
+          size="sm"
+          onClick={() => create.mutate()}
+          disabled={create.isPending || first === undefined}
+        >
           Create the item
         </Button>
         <Button size="sm" variant="ghost" onClick={onDone}>
           Cancel
         </Button>
-        <span className="text-[0.6875rem] text-muted-foreground">Today is {todayIso()}.</span>
+        {first === undefined ? (
+          <span className="text-[0.6875rem] text-destructive">
+            Create a category first: an item has to belong to one.
+          </span>
+        ) : (
+          <span className="text-[0.6875rem] text-muted-foreground">Today is {todayIso()}.</span>
+        )}
       </div>
     </div>
   );
