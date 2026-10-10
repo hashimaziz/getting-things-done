@@ -45,6 +45,20 @@ clock where date-sensitive behavior matters.
   migrated, so setup can be run again immediately. `setup.completed` is deliberately not
   preserved: clearing it is what returns the application to first-run state.
 
+## Setup
+
+The wizard builds a list of requests from its answers (`packages/web/src/setup/plan.ts`) and
+executes them in order (`use-setup-wizard.ts`). Two phases, because a category's id does not
+exist until it is created: settings, then categories, then fields and contexts addressed at the
+ids the category requests actually returned. `setup.completed` is written last, so an interrupted
+setup leaves an app that is configured but still asks to be set up.
+
+It offers a default set — five areas of life, their fields, and six contexts — on two routes. One
+button jumps straight to the review step, and the same set can be loaded into the steps to edit.
+Both routes are previews, not commitments: the review step lists exactly what will be written,
+every default carries a template id the wizard replaces with its own, and the danger zone removes
+all of it in one action.
+
 ## The wipe
 
 `packages/db/src/wipe.ts` deletes every row of user data in one transaction, with foreign

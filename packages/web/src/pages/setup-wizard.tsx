@@ -37,13 +37,16 @@ import { useStatus } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
 import { useDocumentTitle } from '@/lib/document-title';
 import {
+  defaultSetup,
   emptyCategory,
+  emptyContext,
   emptyField,
   isComplete,
   suggestedCategories,
   validateSetup,
   type SetupState as WizardState,
   type WizardCategory,
+  type WizardContext,
   type WizardField,
 } from '@/setup/plan';
 import { useSetupWizard } from '@/setup/use-setup-wizard';
@@ -72,6 +75,7 @@ const FIELD_TYPES: Array<{ value: FieldType; label: string }> = [
 const STEPS = [
   { id: 'basics', title: 'Basics', blurb: 'When your day starts.' },
   { id: 'categories', title: 'Categories', blurb: 'Where your things live.' },
+  { id: 'contexts', title: 'Contexts', blurb: 'Where things can be done.' },
   { id: 'fields', title: 'Fields', blurb: 'What each category tracks.' },
   { id: 'review', title: 'Review', blurb: 'Check it before it is written.' },
 ] as const;
@@ -97,10 +101,15 @@ function detectTimezone(): string {
 interface StateApi {
   state: WizardState;
   patch: (changes: Partial<WizardState>) => void;
+  /** Replaces categories and contexts with the default set. */
+  applyDefaults: () => void;
   addCategory: () => void;
   addSuggestedCategories: () => void;
   updateCategory: (localId: string, changes: Partial<WizardCategory>) => void;
   removeCategory: (localId: string) => void;
+  addContext: () => void;
+  updateContext: (localId: string, changes: Partial<WizardContext>) => void;
+  removeContext: (localId: string) => void;
   addField: (categoryId: string) => void;
   updateField: (categoryId: string, index: number, changes: Partial<WizardField>) => void;
   removeField: (categoryId: string, index: number) => void;
@@ -118,6 +127,7 @@ export function SetupWizard() {
     timezone: detectTimezone(),
     weekStartsOn: 1,
     categories: [],
+    contexts: [],
   }));
   /** Problems are only shown after an attempt, not while typing. */
   const [showProblems, setShowProblems] = useState(false);
@@ -131,6 +141,21 @@ export function SetupWizard() {
     () => ({
       state,
       patch,
+      applyDefaults: () =>
+        setState((previous) => {
+          const defaults = defaultSetup();
+          return {
+            ...previous,
+            categories: defaults.categories.map((category) => ({
+              ...category,
+              localId: nextDraftId('category'),
+            })),
+            contexts: defaults.contexts.map((context) => ({
+              ...context,
+              localId: nextDraftId('context'),
+            })),
+          };
+        }),
       addCategory: () =>
         setState((previous) => ({
           ...previous,
@@ -158,6 +183,23 @@ export function SetupWizard() {
         setState((previous) => ({
           ...previous,
           categories: previous.categories.filter((category) => category.localId !== localId),
+        })),
+      addContext: () =>
+        setState((previous) => ({
+          ...previous,
+          contexts: [...previous.contexts, emptyContext(nextDraftId('context'))],
+        })),
+      updateContext: (localId, changes) =>
+        setState((previous) => ({
+          ...previous,
+          contexts: previous.contexts.map((context) =>
+            context.localId === localId ? { ...context, ...changes } : context,
+          ),
+        })),
+      removeContext: (localId) =>
+        setState((previous) => ({
+          ...previous,
+          contexts: previous.contexts.filter((context) => context.localId !== localId),
         })),
       addField: (categoryId) =>
         setState((previous) => ({
@@ -242,9 +284,39 @@ export function SetupWizard() {
       <header className="flex flex-col gap-1">
         <h1 className="text-lg font-semibold tracking-tight">Set up GTD</h1>
         <p className="text-sm text-muted-foreground">
-          Four short steps. Nothing is written until the last one.
+          {STEPS.length} short steps. Nothing is written until the last one.
         </p>
       </header>
+
+      {/*
+        The fast path, and the only place the wizard offers a starting point rather
+        than a question. It lands on the review step rather than straight into the app:
+        someone who did not read the defaults deserves to see them before they are
+        written, and it is one click from any step back into editing.
+      */}
+      {state.categories.length === 0 && state.contexts.length === 0 ? (
+        <Card className="bg-muted/30">
+          <CardHeader>
+            <CardTitle>Or start from a sensible set</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Five areas of life with the fields each one actually needs, and the six contexts most
+              people filter by. You will see all of it before anything is saved, and every entry can
+              be changed or removed first.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Button
+              size="sm"
+              onClick={() => {
+                api.applyDefaults();
+                setStep('review');
+              }}
+            >
+              Use the defaults
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <ol className="flex flex-wrap gap-2" aria-label="Setup steps">
         {STEPS.map((entry, index) => (
@@ -274,6 +346,7 @@ export function SetupWizard() {
         <CardContent className="flex flex-col gap-4">
           {step === 'basics' ? <BasicsStep api={api} showProblems={showProblems} /> : null}
           {step === 'categories' ? <CategoriesStep api={api} showProblems={showProblems} /> : null}
+          {step === 'contexts' ? <ContextsStep api={api} showProblems={showProblems} /> : null}
           {step === 'fields' ? <FieldsStep api={api} /> : null}
           {step === 'review' ? <ReviewStep state={state} /> : null}
         </CardContent>
@@ -363,9 +436,14 @@ function CategoriesStep({ api, showProblems }: { api: StateApi; showProblems: bo
           Add a category
         </Button>
         {state.categories.length === 0 ? (
-          <Button size="sm" variant="ghost" onClick={api.addSuggestedCategories}>
-            Start from a suggestion
-          </Button>
+          <>
+            <Button size="sm" variant="ghost" onClick={api.addSuggestedCategories}>
+              Start from a suggestion
+            </Button>
+            <Button size="sm" variant="ghost" onClick={api.applyDefaults}>
+              Use all the defaults
+            </Button>
+          </>
         ) : null}
       </div>
 
@@ -407,6 +485,83 @@ function CategoriesStep({ api, showProblems }: { api: StateApi; showProblems: bo
       ))}
 
       <FieldError>{showProblems ? problems.categories : undefined}</FieldError>
+    </div>
+  );
+}
+
+function ContextsStep({ api, showProblems }: { api: StateApi; showProblems: boolean }) {
+  const problems = validateSetup(api.state);
+  const { state } = api;
+  const categories = state.categories.filter((category) => category.name.trim() !== '');
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        A context is <em>where</em> something can be done: at home, on the phone, at the office.
+        Items can carry several at once, and the context filters exist so &ldquo;what can I do right
+        now&rdquo; is one click rather than a search.
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" onClick={api.addContext}>
+          <Plus />
+          Add a context
+        </Button>
+        {state.contexts.length === 0 ? (
+          <Button size="sm" variant="ghost" onClick={api.applyDefaults}>
+            Use the default contexts
+          </Button>
+        ) : null}
+      </div>
+
+      {state.contexts.length === 0 ? (
+        <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
+          No contexts yet. This is optional — everything works without them.
+        </p>
+      ) : null}
+
+      {state.contexts.map((context) => (
+        <div key={context.localId} className="flex items-center gap-2">
+          <Input
+            aria-label="Context name"
+            value={context.name}
+            placeholder="Phone"
+            onChange={(event) => api.updateContext(context.localId, { name: event.target.value })}
+          />
+          {/*
+            Scoping is a choice with a consequence that only shows up later, so it is a
+            visible select rather than a hidden convention. "Everywhere" is first,
+            because it is the common answer and the one a person picks without reading.
+          */}
+          <select
+            aria-label={`Applies to for ${context.name || 'this context'}`}
+            value={context.categoryName ?? ''}
+            onChange={(event) =>
+              api.updateContext(context.localId, {
+                categoryName: event.target.value === '' ? null : event.target.value,
+              })
+            }
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+          >
+            <option value="">Everywhere</option>
+            {categories.map((category) => (
+              <option key={category.localId} value={category.name}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Remove ${context.name || 'context'}`}
+            onClick={() => api.removeContext(context.localId)}
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      ))}
+
+      <FieldError>{showProblems ? problems.contexts : undefined}</FieldError>
     </div>
   );
 }
@@ -556,6 +711,7 @@ function ReviewStep({ state }: { state: WizardState }) {
     (sum, category) => sum + category.fields.filter((field) => field.label.trim() !== '').length,
     0,
   );
+  const contexts = state.contexts.filter((context) => context.name.trim() !== '');
 
   return (
     <div className="flex flex-col gap-3 text-sm">
@@ -568,7 +724,25 @@ function ReviewStep({ state }: { state: WizardState }) {
         <dd>{named.length}</dd>
         <dt className="text-muted-foreground">Custom fields</dt>
         <dd>{fieldCount}</dd>
+        <dt className="text-muted-foreground">Contexts</dt>
+        <dd>{contexts.length === 0 ? 'none' : contexts.length}</dd>
       </dl>
+
+      {/*
+        The contexts are listed rather than counted. "Office applies to Work" is the
+        kind of detail that looks right in a summary and is wrong everywhere else, and
+        this is the last screen before it is written.
+      */}
+      {contexts.length > 0 ? (
+        <ul className="flex list-inside list-disc flex-col gap-0.5 text-xs text-muted-foreground">
+          {contexts.map((context) => (
+            <li key={context.localId}>
+              {context.name}
+              {context.categoryName === null ? ' — everywhere' : ` — ${context.categoryName} only`}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       <Separator />
 

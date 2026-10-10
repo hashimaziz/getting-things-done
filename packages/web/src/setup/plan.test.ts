@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { SETTING_KEYS } from '@gtd/core';
 import {
   SETUP_KEYS,
+  buildContextPlan,
   buildFieldPlan,
   buildSetupPlan,
   choicesFromLabels,
+  defaultSetup,
   isSetupKey,
   suggestedCategories,
   validateSetup,
@@ -15,6 +17,7 @@ const baseState: SetupState = {
   timezone: 'Europe/London',
   weekStartsOn: 1,
   categories: [{ localId: 'a', name: 'Work', description: null, color: null, fields: [] }],
+  contexts: [],
 };
 
 describe('setup keys', () => {
@@ -334,6 +337,148 @@ describe('validateSetup', () => {
   });
 });
 
+describe('buildContextPlan', () => {
+  const ids = new Map([['Work', 'cat_work']]);
+
+  it('creates a global context with no category', () => {
+    const plan = buildContextPlan([{ localId: 'c1', name: 'Phone', categoryName: null }], ids);
+
+    expect(plan.at(0)).toMatchObject({ method: 'POST', path: '/contexts' });
+    expect(plan.at(0)?.body).toEqual({ name: 'Phone', sortOrder: 0 });
+    expect(plan.at(0)?.body).not.toHaveProperty('categoryId');
+  });
+
+  it('addresses a scoped context at the id its category was created with', () => {
+    const plan = buildContextPlan([{ localId: 'c1', name: 'Office', categoryName: 'Work' }], ids);
+
+    expect(plan.at(0)?.body).toEqual({ name: 'Office', sortOrder: 0, categoryId: 'cat_work' });
+  });
+
+  it('skips an unnamed row rather than creating a context with no name', () => {
+    expect(buildContextPlan([{ localId: 'c1', name: '  ', categoryName: null }], ids)).toHaveLength(
+      0,
+    );
+  });
+
+  it('numbers contexts so their order is the order entered', () => {
+    const plan = buildContextPlan(
+      [
+        { localId: 'a', name: 'Anywhere', categoryName: null },
+        { localId: 'b', name: 'Phone', categoryName: null },
+        { localId: 'c', name: 'Errands', categoryName: null },
+      ],
+      ids,
+    );
+
+    expect(plan.map((request) => request.body.sortOrder)).toEqual([0, 1, 2]);
+  });
+
+  it('names the context in the purpose, so a failure is attributable', () => {
+    const plan = buildContextPlan([{ localId: 'a', name: 'Office', categoryName: 'Work' }], ids);
+    expect(plan.at(0)?.purpose).toBe('context "Office"');
+  });
+});
+
+describe('the default set', () => {
+  it('passes its own validation', () => {
+    // A default that cannot be applied is worse than no default.
+    const defaults = defaultSetup();
+    expect(validateSetup({ ...baseState, ...defaults })).toEqual({});
+  });
+
+  it('has no name repeated within either list', () => {
+    // Across the two it does repeat — "Home" is both an area of life and a place —
+    // and that is not a conflict: they are separate tables, and both readings are the
+    // ones people use.
+    const { categories, contexts } = defaultSetup();
+    const unique = (names: string[]): boolean =>
+      new Set(names.map((name) => name.toLowerCase())).size === names.length;
+
+    expect(unique(categories.map((category) => category.name))).toBe(true);
+    expect(unique(contexts.map((context) => context.name))).toBe(true);
+  });
+
+  it('names every category and every context', () => {
+    const { categories, contexts } = defaultSetup();
+    for (const entry of [...categories, ...contexts]) {
+      expect(entry.name.trim()).not.toBe('');
+    }
+  });
+
+  it('scopes a context only to a category it also creates', () => {
+    const { categories, contexts } = defaultSetup();
+    const names = new Set(categories.map((category) => category.name));
+
+    for (const context of contexts) {
+      if (context.categoryName !== null) {
+        expect(names).toContain(context.categoryName);
+      }
+    }
+  });
+
+  it('gives every choice-based field the choices it needs', () => {
+    // A priority field with no choices is a field the server has to invent values for,
+    // which is how "Option 1" ends up in someone's database.
+    for (const category of defaultSetup().categories) {
+      for (const field of category.fields) {
+        if (field.type === 'priority' || field.type === 'select' || field.type === 'multiselect') {
+          expect(field.choices?.length ?? 0).toBeGreaterThan(1);
+        }
+      }
+    }
+  });
+
+  it('does not decide the draft ids, so applying it twice gives two editable copies', () => {
+    const { categories, contexts } = defaultSetup();
+    expect(
+      [...categories, ...contexts].every((entry) => entry.localId.startsWith('default-')),
+    ).toBe(true);
+  });
+});
+
+describe('context validation', () => {
+  const withContexts = (contexts: SetupState['contexts']): SetupState => ({
+    ...baseState,
+    contexts,
+  });
+
+  it('allows no contexts at all', () => {
+    expect(validateSetup(withContexts([]))).toEqual({});
+  });
+
+  it('ignores an unnamed context row', () => {
+    expect(validateSetup(withContexts([{ localId: 'a', name: '  ', categoryName: null }]))).toEqual(
+      {},
+    );
+  });
+
+  it('rejects two contexts differing only in case', () => {
+    const problems = validateSetup(
+      withContexts([
+        { localId: 'a', name: 'Phone', categoryName: null },
+        { localId: 'b', name: 'phone', categoryName: null },
+      ]),
+    );
+    expect(problems.contexts).toContain('phone');
+  });
+
+  it('rejects a context scoped to a category that is not being created', () => {
+    // Creating it unscoped instead would mean a context the user restricted to one
+    // area quietly appears in all of them.
+    const problems = validateSetup(
+      withContexts([{ localId: 'a', name: 'Studio', categoryName: 'Studio' }]),
+    );
+    expect(problems.contexts).toContain('Studio');
+  });
+
+  it('accepts a context scoped to a category in the state', () => {
+    expect(
+      validateSetup(withContexts([{ localId: 'a', name: 'Office', categoryName: 'Work' }]))
+        .contexts,
+    ).toBeUndefined();
+  });
+});
+
 describe('suggestions', () => {
   it('offers categories that are already complete enough to use', () => {
     const suggestions = suggestedCategories();
@@ -350,11 +495,17 @@ describe('suggestions', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('is a subset of the defaults, so both routes agree about what a category is', () => {
+    expect(suggestedCategories().map((entry) => entry.name)).toEqual(
+      defaultSetup()
+        .categories.slice(0, 2)
+        .map((entry) => entry.name),
+    );
+  });
+
   it('does not decide the draft id, so accepting a suggestion twice gives two rows', () => {
     // `localId` is a template marker here. The wizard reassigns it on acceptance,
     // which is what keeps two accepted copies independently editable.
-    expect(suggestedCategories().every((entry) => entry.localId.startsWith('suggested-'))).toBe(
-      true,
-    );
+    expect(suggestedCategories().every((entry) => entry.localId.startsWith('default-'))).toBe(true);
   });
 });

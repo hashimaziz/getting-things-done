@@ -1,5 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { renderApp } from '@/test/render';
 import { healthPayload, stubFetch, type FetchStub, type StubbedRoute } from '@/test/fetch-stub';
 import type { Item } from '@/lib/types';
@@ -80,10 +80,6 @@ function routes(extra: StubbedRoute[] = [], answer: Item = item()): StubbedRoute
 
 beforeEach(() => {
   stub = stubFetch(routes());
-});
-
-afterEach(() => {
-  stub.restore();
 });
 
 describe('recurrence', () => {

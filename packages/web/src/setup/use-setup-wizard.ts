@@ -15,7 +15,13 @@ import { useCallback, useState } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
 import { keys } from '@/lib/query-keys';
 import { useQueryClient } from '@tanstack/react-query';
-import { buildFieldPlan, buildSetupPlan, type SetupRequest, type SetupState } from './plan';
+import {
+  buildContextPlan,
+  buildFieldPlan,
+  buildSetupPlan,
+  type SetupRequest,
+  type SetupState,
+} from './plan';
 
 export interface SetupProgress {
   /** 1-based index of the request being attempted. */
@@ -68,6 +74,7 @@ export function useSetupWizard() {
             sum + category.fields.filter((field) => field.label.trim() !== '').length,
           0,
         ) +
+        setup.contexts.filter((context) => context.name.trim() !== '').length +
         1;
 
       let index = 0;
@@ -118,6 +125,16 @@ export function useSetupWizard() {
           }
         }
 
+        // Contexts, after the categories whose ids they may be scoped to. Same
+        // two-phase reasoning as the fields: the scope is a name until the category
+        // exists, and only the created id can be written down.
+        for (const request of buildContextPlan(setup.contexts, categoryIds)) {
+          step(request);
+          await apiFetch.post(request.path, request.body);
+          done.push(request);
+          completed.push(request.purpose);
+        }
+
         // Last, because it is what gates the wizard. Setting it early means a
         // failure above leaves the app in setup mode, which is recoverable; the
         // reverse order would leave a half-configured app that looks finished.
@@ -138,6 +155,7 @@ export function useSetupWizard() {
         void queryClient.invalidateQueries({ queryKey: ['settings'] });
         void queryClient.invalidateQueries({ queryKey: keys.categories });
         void queryClient.invalidateQueries({ queryKey: keys.fields.all });
+        void queryClient.invalidateQueries({ queryKey: keys.reference.all });
 
         setState({ running: false, progress: null, failure: null, complete: true });
         return true;

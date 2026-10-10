@@ -1,5 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { renderApp } from '@/test/render';
 import { stubFetch, type FetchStub, type StubbedRoute } from '@/test/fetch-stub';
 
@@ -65,10 +65,6 @@ function routes(extra: StubbedRoute[] = []): StubbedRoute[] {
 
 beforeEach(() => {
   stub = stubFetch(routes());
-});
-
-afterEach(() => {
-  stub.restore();
 });
 
 describe('checklist templates', () => {
