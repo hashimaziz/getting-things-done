@@ -15,7 +15,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -56,6 +56,7 @@ export function DashboardPage() {
   useDocumentTitle('Dashboard');
 
   const navigate = useNavigate();
+  const { dashboardId } = useParams();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
 
@@ -65,7 +66,16 @@ export function DashboardPage() {
       (await apiFetch.get<{ dashboards: Dashboard[] }>('/dashboards')).dashboards,
   });
 
-  const dashboard = pickDefault(dashboards.data);
+  /*
+   * Which dashboard is showing.
+   *
+   * Addressed by id in the path rather than in component state, for two reasons: a
+   * second dashboard is otherwise unreachable, and a dashboard somebody has arranged
+   * cannot be linked to. The default is used when the path names none or names one
+   * that has been deleted, so an old bookmark lands on something rather than on an
+   * error.
+   */
+  const dashboard = pickDashboard(dashboards.data, dashboardId);
 
   /*
    * Empty until the saved layout is known, rather than the built-in default.
@@ -123,11 +133,19 @@ export function DashboardPage() {
           <CardHeader>
             <CardTitle>No dashboard yet</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground">
-              Dashboards are created in settings, where a layout can be arranged once and returned
-              to on every visit.
+              A dashboard is a saved arrangement of widgets. Create one, arrange it once, and it is
+              there every time you come back.
             </p>
+            {/* A button rather than a sentence about a screen. The old text pointed at
+                settings, which was a placeholder saying this very thing. */}
+            <div>
+              <Button size="sm" onClick={() => navigate('/settings/dashboards')}>
+                <Plus />
+                Set up a dashboard
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </Page>
@@ -138,11 +156,30 @@ export function DashboardPage() {
     <Page>
       <PageHeader
         title={dashboard.name}
-        description={
-          editing ? 'Drag a widget to move it. Changes save as you make them.' : undefined
-        }
+        description={editing ? 'Changes save as you make them.' : undefined}
         actions={
           <>
+            {/*
+              Only worth a control when there is more than one dashboard. With a single
+              one there is nothing to switch between, and a dropdown that always has one
+              option is a control that exists to be looked at.
+            */}
+            {(dashboards.data ?? []).length > 1 ? (
+              <Select
+                aria-label="Dashboard"
+                value={dashboard.id}
+                onChange={(event: React.ChangeEvent<HTMLSelectElement>) =>
+                  void navigate(`/dashboard/${event.target.value}`)
+                }
+                className="h-8 w-40 text-xs"
+              >
+                {(dashboards.data ?? []).map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
             {editing ? (
               <Select
                 aria-label="Add a widget"
@@ -372,13 +409,18 @@ function useWidgetData(layout: GridLayout): WidgetData {
 }
 
 /** The default dashboard, or the first one. Never nothing if any exist. */
-function pickDefault(dashboards: Dashboard[] | undefined): Dashboard | undefined {
+function pickDashboard(
+  dashboards: Dashboard[] | undefined,
+  wanted: string | undefined,
+): Dashboard | undefined {
   if (dashboards === undefined || dashboards.length === 0) {
     return undefined;
   }
+  if (wanted !== undefined) {
+    const named = dashboards.find((dashboard) => dashboard.id === wanted);
+    if (named !== undefined) {
+      return named;
+    }
+  }
   return dashboards.find((dashboard) => dashboard.isDefault) ?? dashboards[0];
 }
-
-export { adding_placeholder as _unused };
-
-const adding_placeholder = 0;

@@ -90,6 +90,17 @@ export function stubFetch(routes: StubbedRoute[]): FetchStub {
     }
 
     const payload = typeof route.body === 'function' ? route.body(url) : route.body;
+
+    /*
+     * A 204 carries no body, and the Response constructor refuses to be given one.
+     * Every delete endpoint in the application answers 204, so a test that stubs one
+     * with `body: null` — the obvious way to write it — failed inside the stub rather
+     * than in the assertion it was written for.
+     */
+    if (payload === null || payload === undefined) {
+      return new Response(null, { status: route.status ?? 200 });
+    }
+
     return new Response(JSON.stringify(payload), {
       status: route.status ?? 200,
       headers: { 'Content-Type': 'application/json' },

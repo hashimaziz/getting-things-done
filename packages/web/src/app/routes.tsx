@@ -25,6 +25,7 @@ import { CalendarPage } from '@/pages/calendar-page';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { ReviewPage } from '@/pages/review-page';
 import { ChecklistTemplatesPage } from '@/pages/checklist-templates-page';
+import { DashboardSettingsPage } from '@/pages/dashboards-page';
 import { ArchivePage } from '@/pages/archive-page';
 import { SettingsPage } from '@/pages/settings-page';
 
@@ -51,6 +52,8 @@ export function createRoutes(): RouteObject[] {
       children: [
         { index: true, element: <DashboardPage /> },
         { path: '/dashboard', element: <DashboardPage /> },
+        // A dashboard addressed by id, so a particular arrangement can be linked to.
+        { path: '/dashboard/:dashboardId', element: <DashboardPage /> },
         { path: '/capture', element: <CapturePage /> },
         { path: '/clarify', element: <ClarifyPage /> },
         { path: '/list/:container', element: <ListPage /> },
@@ -73,10 +76,7 @@ export function createRoutes(): RouteObject[] {
           element: <SettingsPage />,
         },
         { path: '/settings/templates', element: <ChecklistTemplatesPage /> },
-        {
-          path: '/settings/dashboards',
-          element: <ComingSoon title="Dashboards" feature="Widget layout editor" />,
-        },
+        { path: '/settings/dashboards', element: <DashboardSettingsPage /> },
         { path: '/settings/shortcuts', element: <ShortcutSettings /> },
         { path: '*', element: <NotFound /> },
       ],
