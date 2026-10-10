@@ -314,6 +314,42 @@ describe('arranging', () => {
     });
   });
 
+  it('does not rearrange the dashboard by being rendered', async () => {
+    /*
+     * The regression this suite would not have caught on its own.
+     *
+     * Deciding which arrow buttons to disable runs `moveWidgetBy` during render, four
+     * times per widget. That function used to push neighbours down by mutating the
+     * widgets it was given, so every render moved things nobody had pressed and the
+     * grid came apart on its own — the buttons got worse rather than better.
+     */
+    lastStub = stubFetch(
+      routes([
+        widget('a', 'inbox.backlog', { x: 0, width: 4, height: 2 }),
+        widget('b', 'overdue.count', { x: 4, width: 4, height: 2 }),
+      ]),
+    );
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+    await user.click(screen.getByRole('button', { name: 'Move Inbox backlog right' }));
+
+    await waitFor(() => {
+      expect(lastStub?.calls.some((entry) => entry.method === 'PATCH')).toBe(true);
+    });
+    const afterClick = lastStub?.lastBody('PATCH', '/api/dashboards/d1');
+
+    // Re-rendering must not write another layout: one press, one save, and the saved
+    // layout is the one the press asked for.
+    await screen.findByRole('button', { name: 'Done' });
+    const afterRerender = lastStub?.lastBody('PATCH', '/api/dashboards/d1');
+    expect(afterRerender).toEqual(afterClick);
+
+    const saved = afterClick as { widgets: Array<{ id: string; x: number; y: number }> };
+    expect(saved.widgets.find((entry) => entry.id === 'a')).toMatchObject({ x: 4, y: 0 });
+    expect(saved.widgets.find((entry) => entry.id === 'b')).toMatchObject({ x: 0, y: 0 });
+  });
+
   it('says how to move a widget when arranging', async () => {
     lastStub = stubFetch(routes([widget('a', 'inbox.backlog')]));
     const { user } = renderApp('/dashboard');

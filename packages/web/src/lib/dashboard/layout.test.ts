@@ -294,6 +294,71 @@ describe('nudging one cell', () => {
   });
 });
 
+/*
+ * None of these functions may change the layout they were given.
+ *
+ * They all end in `pushDown`, which once copied its list but not its widgets, so
+ * every call rewrote the caller's objects. React compares by reference, so a mutation
+ * is invisible to it: the screen keeps showing the old positions while the data
+ * underneath has already moved. Nothing asserts that until the arrange screen calls
+ * these during render to decide which buttons are disabled, and then every render
+ * rearranges the dashboard nobody touched.
+ */
+describe('leaving the layout it was given alone', () => {
+  const packed: GridLayout = {
+    widgets: [
+      widget({ id: 'a', x: 0, y: 0, width: 4, height: 2 }),
+      widget({ id: 'b', x: 4, y: 0, width: 4, height: 2 }),
+      widget({ id: 'c', x: 8, y: 0, width: 4, height: 2 }),
+    ],
+  };
+
+  function snapshot(layout: GridLayout): string {
+    return JSON.stringify(layout.widgets);
+  }
+
+  it('does not change it when nudging', () => {
+    const before = snapshot(packed);
+    moveWidgetBy(packed, 'a', 'right');
+    moveWidgetBy(packed, 'a', 'down');
+
+    expect(snapshot(packed)).toBe(before);
+  });
+
+  it('does not change it when a nudge is refused', () => {
+    const before = snapshot(packed);
+    moveWidgetBy(packed, 'a', 'left');
+
+    expect(snapshot(packed)).toBe(before);
+  });
+
+  it('does not change it when resizing into a neighbour', () => {
+    const before = snapshot(packed);
+    resizeWidget(packed, 'a', { width: 8, height: 2 });
+
+    // Resizing into occupied space is the path that pushes, so it is the one that used
+    // to rewrite the widget it did not even return.
+    expect(snapshot(packed)).toBe(before);
+  });
+
+  it('does not change it when moving onto occupied space', () => {
+    const before = snapshot(packed);
+    moveWidget(packed, 'a', { x: 2, y: 0 });
+
+    expect(snapshot(packed)).toBe(before);
+  });
+
+  it('survives being called twice with the same answer', () => {
+    // The real symptom: the arrange screen asks "could this be nudged?" for every
+    // widget and every direction on every render, so these run dozens of times a
+    // render. Idempotence is the minimum that makes that survivable.
+    const once = snapshot({ widgets: moveWidgetBy(packed, 'a', 'right').widgets });
+    const twice = snapshot({ widgets: moveWidgetBy(packed, 'a', 'right').widgets });
+
+    expect(once).toBe(twice);
+  });
+});
+
 describe('resizing', () => {
   const layout = normaliseLayout([widget({ id: 'a', x: 0, y: 0, width: 4, height: 2 })]);
 

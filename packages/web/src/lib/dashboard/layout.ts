@@ -234,7 +234,20 @@ export function resizeWidget(
  * and `y` is bounded.
  */
 export function pushDown(others: GridWidget[], settled: GridWidget): GridWidget[] {
-  const widgets = [...others];
+  /*
+   * Copied element by element, not just as an array.
+   *
+   * `[...others]` copies the list and keeps the same objects, so the `widget.y += 1`
+   * below rewrote the caller's widgets in place. That was survivable while this ran
+   * only when somebody clicked something: React compared the same object references,
+   * saw no change, and never re-rendered.
+   *
+   * It stopped being survivable when the arrange screen started calling it *during
+   * render*, to decide which arrow buttons to disable. Every render rewrote the
+   * layout it was reading, so the arrows moved widgets nobody had pressed and the
+   * grid drifted apart on its own.
+   */
+  const widgets = others.map((widget) => ({ ...widget }));
   const occupied = new Set<string>();
   occupy(occupied, settled.x, settled.y, settled.width, settled.height);
 
