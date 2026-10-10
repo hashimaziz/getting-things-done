@@ -14,6 +14,7 @@
     "dev:server": "pnpm --filter=@gtd/server run dev",
     "dev:web": "pnpm --filter=@gtd/web run dev",
     "cli": "node packages/cli/dist/bin.js",
+    "gtd": "node packages/cli/dist/bin.js",
     "test": "vitest run && pnpm -r run test",
     "test:watch": "vitest && pnpm -r --parallel run test:watch",
     "typecheck": "pnpm run build:packages && pnpm -r run typecheck",

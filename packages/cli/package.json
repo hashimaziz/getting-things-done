@@ -8,7 +8,7 @@
   },
   "main": "./dist/bin.js",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/bin.js",
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "test": "vitest run",
     "test:watch": "vitest",

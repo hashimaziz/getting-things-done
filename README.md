@@ -62,12 +62,22 @@ removed.
 
 ## CLI
 
+The CLI runs from the repository. It is not installed globally, so it is invoked through
+pnpm — there is no bare `gtd` on your `PATH`:
+
 ```bash
-pnpm build
-node packages/cli/dist/bin.js capture "buy milk"
-node packages/cli/dist/bin.js list inbox
-node packages/cli/dist/bin.js reset --preview
-node packages/cli/dist/bin.js reset --confirm "WIPE EVERYTHING"
+pnpm build                       # once, to compile packages/cli to dist
+pnpm gtd capture "buy milk"      # add --silent to drop pnpm's own command line
+pnpm gtd list inbox
+pnpm gtd reset --preview
+pnpm gtd reset --confirm "WIPE EVERYTHING"
+```
+
+`pnpm cli ...` is an alias for the same thing, and `node packages/cli/dist/bin.js ...` works
+if you prefer to bypass pnpm. To get a bare `gtd`, put this in your shell profile:
+
+```bash
+alias gtd='pnpm --silent gtd'
 ```
 
 `reset` empties every table of user data, including all settings, and leaves the schema
