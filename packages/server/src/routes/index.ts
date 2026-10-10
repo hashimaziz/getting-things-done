@@ -9,9 +9,11 @@ import { registerReviewRoutes } from './review.js';
 import { registerRecurrenceRoutes } from './recurrence.js';
 import { registerRecommendationRoutes } from './recommendations.js';
 import { registerSettingsRoutes } from './settings.js';
+import { registerSystemRoutes } from './system.js';
 
 export function registerRoutes(app: FastifyInstance): void {
   registerSettingsRoutes(app);
+  registerSystemRoutes(app);
   registerCategoryRoutes(app);
   registerDashboardRoutes(app);
   registerArchiveRoutes(app);
@@ -34,3 +36,4 @@ export { expandItem, toFieldValues, type ExpandedItem } from './item-helpers.js'
 export { registerRecurrenceRoutes } from './recurrence.js';
 export { registerRecommendationRoutes } from './recommendations.js';
 export { registerSettingsRoutes } from './settings.js';
+export { registerSystemRoutes } from './system.js';

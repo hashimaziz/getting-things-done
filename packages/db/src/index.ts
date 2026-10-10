@@ -59,4 +59,5 @@ export {
   type RecurrenceServiceOptions,
 } from './recurrence-service.js';
 export * from './repositories/index.js';
+export * from './wipe.js';
 export { LATEST_MIGRATION_ID, MIGRATIONS, type Migration } from './schema/migrations.js';

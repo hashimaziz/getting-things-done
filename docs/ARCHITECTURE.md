@@ -40,7 +40,34 @@ clock where date-sensitive behavior matters.
 - Checklist templates copy their entries onto a new item; an item never depends on a
   future template edit.
 - Filters and sorts are compiled by core into parameterized SQL. The browser does not
-  filter a partial page.
+  filter a partial page, and neither does the CLI.
+- Wiping is a delete of rows, never of the schema. The database stays valid and
+  migrated, so setup can be run again immediately. `setup.completed` is deliberately not
+  preserved: clearing it is what returns the application to first-run state.
+
+## The wipe
+
+`packages/db/src/wipe.ts` deletes every row of user data in one transaction, with foreign
+keys enforced and children removed before parents. It refuses to run if the schema
+contains a table it does not know how to clear, because a wipe that quietly left a table
+behind would destroy data while reporting that it had removed everything.
+
+The API route requires the confirmation phrase `WIPE EVERYTHING`, and the CLI requires the
+same phrase via `--confirm`. Both entry points agreeing is deliberate: two ways in with
+different safety rules is how someone destroys a week of data with the laxer one.
+
+## Development mode
+
+`pnpm dev:server` runs the server from TypeScript source using Node's type stripping. That
+needs a resolve hook, because TypeScript's NodeNext imports name the compiled `.js` files
+while only `.ts` exists on disk; `packages/server/src/dev-loader.mjs` maps local `.js`
+specifiers back to their sources and leaves package resolution to Node.
+
+`rrule` publishes an ESM build through its `module` field but Node follows the CommonJS
+`main`, so `core` accepts either shape at the import site. That is the one place in the
+codebase where a dependency's packaging shape is handled, and it is there because a named
+import that works under a bundler and fails under Node is otherwise a production outage
+that no test catches.
 
 ## Testing strategy
 
