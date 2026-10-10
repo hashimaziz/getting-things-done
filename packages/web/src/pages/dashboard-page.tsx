@@ -14,14 +14,15 @@
  *   decision, and a layout means the same thing on a laptop and a large monitor.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Select } from '@/components/ui';
 import { Page, PageHeader } from '@/components/layout/app-shell';
 import { Widget } from '@/components/dashboard/widget';
+import { cn } from '@/lib/cn';
 import { useDocumentTitle } from '@/lib/document-title';
 import { apiFetch } from '@/lib/api';
 import { keys } from '@/lib/query-keys';
@@ -35,17 +36,36 @@ import {
 } from '@/lib/dashboard/registry';
 import {
   COLUMNS,
+  MAX_SIZE,
+  MIN_SIZE,
   ROW_HEIGHT,
   addWidget,
   gridHeight,
   moveWidget,
+  moveWidgetBy,
   normaliseLayout,
   removeWidget,
   resizeWidget,
   widgetStyle,
   type GridLayout,
+  type MoveDirection,
 } from '@/lib/dashboard/layout';
-import type { Dashboard, Item, MetricPoint, Recommendation, SystemHealth } from '@/lib/types';
+
+/** Glyphs for the four nudges. Text rather than icons so they line up with each other. */
+const ARROWS: Record<MoveDirection, string> = {
+  up: '↑',
+  down: '↓',
+  left: '←',
+  right: '→',
+};
+import type {
+  Dashboard,
+  DashboardWidget,
+  Item,
+  MetricPoint,
+  Recommendation,
+  SystemHealth,
+} from '@/lib/types';
 
 interface WaitingGroup {
   personName: string;
@@ -59,6 +79,26 @@ export function DashboardPage() {
   const { dashboardId } = useParams();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+
+  /*
+   * The widget being dragged, and the cell its top-left corner is currently over.
+   *
+   * Held separately from the saved layout so the widget follows the pointer and
+   * nothing is written until it is let go. A drag that saves on every pointermove
+   * writes a hundred rows and a hundred history entries for one gesture, and puts a
+   * widget back on the row below everything each time it passed over it.
+   */
+  const [drag, setDrag] = useState<{ id: string; at: { x: number; y: number } } | null>(null);
+  /*
+   * The same position, readable from the pointer-up handler.
+   *
+   * State is not readable from an event handler that closed over it: by the time the
+   * pointer is released, the render holding that state may never have happened, so the
+   * drop would land wherever the widget started. A ref is written alongside the state
+   * and read at the moment it is needed.
+   */
+  const dragAt = useRef<{ id: string; at: { x: number; y: number } } | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const dashboards = useQuery({
     queryKey: keys.dashboards.list,
@@ -108,6 +148,98 @@ export function DashboardPage() {
     },
   });
 
+  /**
+   * Nudge or resize, returning the layout either way.
+   *
+   * The `applied` flag is kept by the caller for disabling the button; what arrives
+   * here is always a valid layout, so a refused nudge simply returns the layout it was
+   * given and nothing is saved.
+   */
+  const nudge = (current: GridLayout, id: string, direction: MoveDirection): GridLayout => ({
+    widgets: moveWidgetBy(current, id, direction).widgets,
+  });
+
+  const canNudge = (current: GridLayout, id: string, direction: MoveDirection): boolean =>
+    moveWidgetBy(current, id, direction).applied;
+
+  const resize = (
+    current: GridLayout,
+    id: string,
+    size: { width: number; height: number },
+  ): GridLayout => ({ widgets: resizeWidget(current, id, size).widgets });
+
+  /**
+   * Begins a drag from a pointer press on a widget's title bar.
+   *
+   * Pointer events rather than mouse events, so a touch works without a second code
+   * path — and `setPointerCapture` rather than a listener on the document, so the
+   * gesture survives the pointer leaving the title bar mid-drag, which is what happens
+   * the moment anybody drags anything.
+   */
+  const startDrag = (event: React.PointerEvent, widget: DashboardWidget): void => {
+    if (event.button !== 0) {
+      // Right-click opens a context menu; it is not a drag.
+      return;
+    }
+
+    const grid = gridRef.current;
+    if (grid === null) {
+      return;
+    }
+
+    const cellWidth = grid.getBoundingClientRect().width / COLUMNS;
+    if (cellWidth <= 0) {
+      // jsdom reports a zero-width rect, and so does a display:none grid. Either way
+      // there is nothing to measure a cell against.
+      return;
+    }
+
+    const origin = { x: event.clientX, y: event.clientY };
+    const startAt = { x: widget.x, y: widget.y };
+
+    /*
+     * Capture keeps the gesture alive when the pointer leaves the title bar, which it
+     * does immediately. It is an optimisation rather than a requirement — the window
+     * listeners below do the work either way — so an environment without it gets a
+     * working drag rather than a thrown error and no drag at all.
+     */
+    if (typeof event.currentTarget.setPointerCapture === 'function') {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    const onMove = (move: PointerEvent): void => {
+      const columns = Math.round((move.clientX - origin.x) / cellWidth);
+      const rows = Math.round((move.clientY - origin.y) / ROW_HEIGHT);
+
+      const next = {
+        id: widget.id,
+        at: {
+          x: Math.min(Math.max(0, startAt.x + columns), COLUMNS - widget.width),
+          y: Math.max(0, startAt.y + rows),
+        },
+      };
+      dragAt.current = next;
+      setDrag(next);
+    };
+
+    const finish = (): void => {
+      const landed = dragAt.current;
+      if (landed !== null && landed.id === widget.id) {
+        // One save per gesture, at the end of it.
+        apply(moveWidget(layout, widget.id, landed.at));
+      }
+      dragAt.current = null;
+      setDrag(null);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  };
+
   const apply = (next: GridLayout): void => {
     if (!dashboard) {
       return;
@@ -156,7 +288,11 @@ export function DashboardPage() {
     <Page>
       <PageHeader
         title={dashboard.name}
-        description={editing ? 'Changes save as you make them.' : undefined}
+        description={
+          editing
+            ? 'Drag a title bar to move a widget, or use the arrows. Changes save as you make them.'
+            : undefined
+        }
         actions={
           <>
             {/*
@@ -188,7 +324,14 @@ export function DashboardPage() {
                   if (event.target.value === '') {
                     return;
                   }
-                  apply(addWidget(layout, event.target.value, `w${Date.now()}`));
+                  /*
+                   * The id is derived from the layout rather than from a clock.
+                   *
+                   * Two widgets added in the same millisecond were getting the same
+                   * id, and two widgets sharing one id is a layout that renders one of
+                   * them twice and moves both when one is dragged.
+                   */
+                  apply(addWidget(layout, event.target.value, freeWidgetId(layout)));
                 }}
                 className="h-8 w-44 text-xs"
               >
@@ -214,6 +357,7 @@ export function DashboardPage() {
       />
 
       <div
+        ref={gridRef}
         className="grid gap-2"
         style={{
           gridTemplateColumns: `repeat(${COLUMNS}, minmax(0, 1fr))`,
@@ -224,10 +368,24 @@ export function DashboardPage() {
         {layout.widgets.map((widget) => (
           <div
             key={widget.id}
-            style={widgetStyle(widget)}
-            className="flex min-h-0 flex-col overflow-hidden rounded-lg border bg-card"
+            style={widgetStyle(drag?.id === widget.id ? { ...widget, ...drag.at } : widget)}
+            className={cn(
+              'flex min-h-0 flex-col overflow-hidden rounded-lg border bg-card',
+              drag?.id === widget.id ? 'opacity-80 ring-2 ring-primary' : '',
+            )}
           >
-            <div className="flex items-center justify-between gap-2 border-b px-3 py-1.5">
+            <div
+              /*
+                The title bar is the handle rather than the whole widget: dragging a
+                chart means dragging its chart, and a handle that is the title means a
+                click on the numbers never moves anything by accident.
+              */
+              className={cn(
+                'flex items-center justify-between gap-2 border-b px-3 py-1.5',
+                editing ? 'cursor-grab touch-none select-none active:cursor-grabbing' : '',
+              )}
+              onPointerDown={editing ? (event) => startDrag(event, widget) : undefined}
+            >
               <h2 className="truncate text-xs font-medium">
                 {widgetTitle(widget)}
                 {findWidget(widget.type)?.renderer === 'text' ? (
@@ -240,37 +398,36 @@ export function DashboardPage() {
               {editing ? (
                 <div className="flex shrink-0 items-center gap-1">
                   {/*
-                    Movement is by button as well as by drag. Drag is a pointing
-                    device's affordance, and a layout you can only rearrange with a mouse
-                    is a layout some people cannot arrange at all.
+                    Movement is by button as well as by drag.
+
+                    The buttons swap with the neighbour in that direction rather than
+                    shoving it onto the next row, which is what they used to do: five
+                    presses of the right arrow moved a widget one cell and rearranged
+                    half the dashboard. A press means "put it over there", so that is
+                    what it does. Drag still pushes, because a drag is a placement and
+                    the person can see where it is going.
                   */}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Move ${widgetTitle(widget)} left`}
-                    onClick={() =>
-                      apply(moveWidget(layout, widget.id, { x: widget.x - 1, y: widget.y }))
-                    }
-                  >
-                    ←
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Move ${widgetTitle(widget)} right`}
-                    onClick={() =>
-                      apply(moveWidget(layout, widget.id, { x: widget.x + 1, y: widget.y }))
-                    }
-                  >
-                    →
-                  </Button>
+                  {(['up', 'down', 'left', 'right'] as const).map((direction) => (
+                    <Button
+                      key={direction}
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Move ${widgetTitle(widget)} ${direction}`}
+                      disabled={!canNudge(layout, widget.id, direction)}
+                      onClick={() => apply(nudge(layout, widget.id, direction))}
+                    >
+                      {ARROWS[direction]}
+                    </Button>
+                  ))}
+
                   <Button
                     size="sm"
                     variant="ghost"
                     aria-label={`Widen ${widgetTitle(widget)}`}
+                    disabled={widget.width >= COLUMNS}
                     onClick={() =>
                       apply(
-                        resizeWidget(layout, widget.id, {
+                        resize(layout, widget.id, {
                           width: widget.width + 1,
                           height: widget.height,
                         }),
@@ -283,9 +440,10 @@ export function DashboardPage() {
                     size="sm"
                     variant="ghost"
                     aria-label={`Narrow ${widgetTitle(widget)}`}
+                    disabled={widget.width <= MIN_SIZE.width}
                     onClick={() =>
                       apply(
-                        resizeWidget(layout, widget.id, {
+                        resize(layout, widget.id, {
                           width: widget.width - 1,
                           height: widget.height,
                         }),
@@ -294,6 +452,39 @@ export function DashboardPage() {
                   >
                     −
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={`Make ${widgetTitle(widget)} taller`}
+                    disabled={widget.height >= MAX_SIZE.height}
+                    onClick={() =>
+                      apply(
+                        resize(layout, widget.id, {
+                          width: widget.width,
+                          height: widget.height + 1,
+                        }),
+                      )
+                    }
+                  >
+                    <ChevronDown />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={`Make ${widgetTitle(widget)} shorter`}
+                    disabled={widget.height <= MIN_SIZE.height}
+                    onClick={() =>
+                      apply(
+                        resize(layout, widget.id, {
+                          width: widget.width,
+                          height: widget.height - 1,
+                        }),
+                      )
+                    }
+                  >
+                    <ChevronUp />
+                  </Button>
+
                   <Button
                     size="sm"
                     variant="ghost"
@@ -409,6 +600,15 @@ function useWidgetData(layout: GridLayout): WidgetData {
 }
 
 /** The default dashboard, or the first one. Never nothing if any exist. */
+/** An id no widget in this layout is already using. */
+function freeWidgetId(layout: GridLayout): string {
+  let index = layout.widgets.length;
+  while (layout.widgets.some((widget) => widget.id === `w${index}`)) {
+    index += 1;
+  }
+  return `w${index}`;
+}
+
 function pickDashboard(
   dashboards: Dashboard[] | undefined,
   wanted: string | undefined,

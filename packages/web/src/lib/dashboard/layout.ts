@@ -272,6 +272,111 @@ function overlapsAny(widget: GridWidget, occupied: Set<string>): boolean {
   );
 }
 
+export type MoveDirection = 'up' | 'down' | 'left' | 'right';
+
+/**
+ * Moves a widget one cell, swapping with whatever is there.
+ *
+ * Different from {@link moveWidget} on purpose, and the difference is the whole reason
+ * the arrow buttons felt broken. A drag is a placement and pushing neighbours down is the
+ * right answer: the person can see where it is going. An arrow press is a nudge — "put
+ * it over there" — and pushing instead makes every press shove a neighbour onto the row
+ * below and leave a hole behind, so pressing the arrow five times moves one widget one
+ * cell and rearranges half the dashboard.
+ *
+ * So an arrow swaps when the target cell is taken, and moves when it is not. Nothing is
+ * ever displaced by a press of an arrow, which is what makes repeated presses land where
+ * the person expects.
+ */
+export function moveWidgetBy(layout: GridLayout, id: string, direction: MoveDirection): MoveResult {
+  const moving = layout.widgets.find((widget) => widget.id === id);
+  if (!moving) {
+    return { widgets: layout.widgets, applied: false };
+  }
+
+  /*
+   * The cell just past the edge this widget is moving toward, which is the cell the
+   * person is pointing at. Using the top-left corner instead meant a widget two cells
+   * wide nudged into a cell it already covered, found no neighbour, and overlapped
+   * the one it was supposed to have swapped with.
+   */
+  const target = {
+    left: { x: moving.x - 1, y: moving.y },
+    right: { x: moving.x + moving.width, y: moving.y },
+    up: { x: moving.x, y: moving.y - 1 },
+    down: { x: moving.x, y: moving.y + moving.height },
+  }[direction];
+
+  if (target.x < 0 || target.y < 0) {
+    // Against the edge of the grid. Refused rather than clamped, so the button can be
+    // disabled instead of appearing to do nothing when it is pressed.
+    return { widgets: layout.widgets, applied: false };
+  }
+
+  const neighbour = layout.widgets.find(
+    (widget) => widget.id !== id && covers(widget, target.x, target.y),
+  );
+
+  if (!neighbour) {
+    const nudged = {
+      ...moving,
+      x: Math.min(
+        moving.x + (direction === 'left' ? -1 : direction === 'right' ? 1 : 0),
+        COLUMNS - moving.width,
+      ),
+      y: Math.max(0, moving.y + (direction === 'up' ? -1 : direction === 'down' ? 1 : 0)),
+    };
+    if (nudged.x === moving.x && nudged.y === moving.y) {
+      return { widgets: layout.widgets, applied: false };
+    }
+    return { widgets: settle(layout.widgets, nudged), applied: true };
+  }
+
+  /*
+   * A swap moves each widget along the axis being nudged and leaves the other
+   * coordinate alone, so two widgets of different heights still exchange places rather
+   * than being resized into each other.
+   */
+  const horizontal = direction === 'left' || direction === 'right';
+  const placed: GridWidget = {
+    ...moving,
+    ...(horizontal ? { x: neighbour.x } : { y: neighbour.y }),
+  };
+  const displaced: GridWidget = {
+    ...neighbour,
+    ...(horizontal ? { x: moving.x } : { y: moving.y }),
+  };
+
+  const exchanged = layout.widgets.map((widget) => {
+    if (widget.id === placed.id) return placed;
+    if (widget.id === displaced.id) return displaced;
+    return widget;
+  });
+
+  return { widgets: settle(exchanged, placed), applied: true };
+}
+
+/**
+ * Guarantees nothing overlaps, with `focus` kept where it was just put.
+ *
+ * A swap can land two differently-sized widgets on the same cells, and the one that
+ * was moved is the one the person meant to be there. So it stays, and anything it now
+ * sits on is pushed down.
+ */
+function settle(widgets: GridWidget[], focus: GridWidget): GridWidget[] {
+  return pushDown(
+    widgets.filter((widget) => widget.id !== focus.id),
+    focus,
+  ).map((widget) => (widget.id === focus.id ? focus : widget));
+}
+
+/** Whether a widget covers the given cell. */
+function covers(widget: GridWidget, x: number, y: number): boolean {
+  return (
+    x >= widget.x && x < widget.x + widget.width && y >= widget.y && y < widget.y + widget.height
+  );
+}
+
 export function removeWidget(layout: GridLayout, id: string): GridLayout {
   return { widgets: layout.widgets.filter((widget) => widget.id !== id) };
 }

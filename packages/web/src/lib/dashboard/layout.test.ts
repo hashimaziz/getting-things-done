@@ -5,6 +5,7 @@ import {
   defaultLayout,
   gridHeight,
   moveWidget,
+  moveWidgetBy,
   normaliseLayout,
   removeWidget,
   renameWidget,
@@ -181,6 +182,115 @@ describe('moving', () => {
 
     expect(moved.applied).toBe(false);
     expect(moved.widgets).toBe(layout.widgets);
+  });
+});
+
+/*
+ * Nudging with the arrow buttons.
+ *
+ * A drag is a placement, so pushing neighbours down is right. An arrow press is a
+ * nudge — "put it over there" — and pushing made every press shove a neighbour onto
+ * the row below and leave a hole, so five presses moved one widget one cell and
+ * rearranged half the dashboard. These assert that an arrow swaps instead.
+ */
+describe('nudging one cell', () => {
+  const row: GridLayout = {
+    widgets: [
+      widget({ id: 'a', x: 0, y: 0, width: 2, height: 1 }),
+      widget({ id: 'b', x: 2, y: 0, width: 2, height: 1 }),
+    ],
+  };
+
+  it('moves into a free cell without touching anything', () => {
+    const result = moveWidgetBy(row, 'a', 'down');
+
+    expect(result.applied).toBe(true);
+    expect(result.widgets.find((w) => w.id === 'a')).toMatchObject({ x: 0, y: 1 });
+    expect(result.widgets.find((w) => w.id === 'b')).toMatchObject({ x: 2, y: 0 });
+  });
+
+  it('swaps with the neighbour rather than pushing it down', () => {
+    const result = moveWidgetBy(row, 'a', 'right');
+
+    // The bug: pushing moved `b` onto the row below and left a hole at (2,0).
+    expect(result.widgets.find((w) => w.id === 'a')).toMatchObject({ x: 2, y: 0 });
+    expect(result.widgets.find((w) => w.id === 'b')).toMatchObject({ x: 0, y: 0 });
+    expect([...cellsOf(result.widgets)].sort()).toEqual([...cellsOf(row)].sort());
+  });
+
+  it('leaves no hole behind after a swap', () => {
+    const result = moveWidgetBy(row, 'a', 'right');
+
+    // Every cell the pair used to cover is still covered.
+    expect(cellsOf(result.widgets).sort()).toEqual(cellsOf(row).sort());
+  });
+
+  it('swaps each press, so five presses go five cells', () => {
+    let widgets = row.widgets;
+    for (let press = 0; press < 5; press += 1) {
+      widgets = moveWidgetBy({ widgets }, 'a', 'right').widgets;
+    }
+
+    /*
+     * Five presses move `a` six cells: the first is a swap across `b`, and each of the
+     * rest is one cell. Before the fix this moved `a` exactly one cell and left five
+     * holes behind, which is what made the arrows feel broken.
+     */
+    expect(widgets.find((w) => w.id === 'a')).toMatchObject({ x: 6, y: 0 });
+    expect(widgets.find((w) => w.id === 'b')).toMatchObject({ x: 0, y: 0 });
+    expect(new Set(cellsOf(widgets)).size).toBe(cellsOf(widgets).length);
+  });
+
+  it('keeps each widget its own size through a swap', () => {
+    const mismatched: GridLayout = {
+      widgets: [
+        widget({ id: 'a', x: 0, y: 0, width: 1, height: 1 }),
+        widget({ id: 'b', x: 1, y: 0, width: 5, height: 2 }),
+      ],
+    };
+
+    const result = moveWidgetBy(mismatched, 'a', 'right');
+
+    expect(result.widgets.find((w) => w.id === 'a')).toMatchObject({ width: 1, height: 1 });
+    expect(result.widgets.find((w) => w.id === 'b')).toMatchObject({ width: 5, height: 2 });
+    // Even so, nothing may overlap afterwards.
+    expect(new Set(cellsOf(result.widgets)).size).toBe(cellsOf(result.widgets).length);
+  });
+
+  it('refuses a nudge that would leave the grid', () => {
+    const left: GridLayout = { widgets: [widget({ id: 'a', x: 0, y: 0, width: 2, height: 1 })] };
+
+    const result = moveWidgetBy(left, 'a', 'left');
+
+    // `applied: false` lets the button stay disabled instead of doing nothing visibly.
+    expect(result.applied).toBe(false);
+    expect(result.widgets).toBe(left.widgets);
+  });
+
+  it('refuses a nudge above the top row', () => {
+    const top: GridLayout = { widgets: [widget({ id: 'a', x: 0, y: 0, width: 2, height: 1 })] };
+
+    expect(moveWidgetBy(top, 'a', 'up').applied).toBe(false);
+  });
+
+  it('refuses a nudge of a widget that is not there', () => {
+    expect(moveWidgetBy(row, 'nope', 'left').applied).toBe(false);
+  });
+
+  it('swaps with whichever widget covers the target cell', () => {
+    // `a` is one cell wide and `b` is five: pressing right targets cell (1,0), which
+    // `b` covers, so `b` moves even though the target is not `b`'s origin.
+    const mismatched: GridLayout = {
+      widgets: [
+        widget({ id: 'a', x: 0, y: 0, width: 1, height: 1 }),
+        widget({ id: 'b', x: 1, y: 0, width: 5, height: 2 }),
+      ],
+    };
+
+    const result = moveWidgetBy(mismatched, 'a', 'right');
+
+    expect(result.widgets.find((w) => w.id === 'a')).toMatchObject({ x: 1 });
+    expect(result.widgets.find((w) => w.id === 'b')).toMatchObject({ x: 0 });
   });
 });
 

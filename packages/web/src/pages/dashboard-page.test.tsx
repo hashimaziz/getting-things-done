@@ -1,5 +1,5 @@
-import { screen, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { renderApp } from '@/test/render';
 import { stubFetch, type FetchStub, type StubbedRoute } from '@/test/fetch-stub';
 
@@ -232,6 +232,208 @@ describe('arranging', () => {
         { widgets: Array<{ id: string }> } | undefined;
       expect(body?.widgets ?? []).toHaveLength(0);
     });
+  });
+
+  /*
+   * The arrows used to shove rather than swap.
+   *
+   * `moveWidget` pushes whatever it lands on onto the next row, which is right for a
+   * drag — the person can see where it is going — and wrong for a press of an arrow.
+   * Five presses of "right" moved a widget one cell and pushed four neighbours down a
+   * row each, which is what made the buttons feel broken.
+   */
+  it('swaps two widgets rather than pushing one below the other', async () => {
+    lastStub = stubFetch(
+      routes([
+        widget('a', 'inbox.backlog', { x: 0, width: 2, height: 1 }),
+        widget('b', 'overdue.count', { x: 2, width: 2, height: 1 }),
+      ]),
+    );
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+    await user.click(screen.getByRole('button', { name: 'Move Inbox backlog right' }));
+
+    await waitFor(() => {
+      const body = lastStub?.lastBody('PATCH', '/api/dashboards/d1') as
+        { widgets: Array<{ id: string; x: number; y: number }> } | undefined;
+      const moved = body?.widgets.find((entry) => entry.id === 'a');
+      const displaced = body?.widgets.find((entry) => entry.id === 'b');
+      expect(moved?.x).toBe(2);
+      // Neither one drops a row: the hole left by the old behaviour.
+      expect(moved?.y).toBe(0);
+      expect(displaced).toMatchObject({ x: 0, y: 0 });
+    });
+  });
+
+  it('offers all four directions', async () => {
+    lastStub = stubFetch(routes([widget('a', 'inbox.backlog')]));
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+
+    for (const direction of ['up', 'down', 'left', 'right']) {
+      expect(
+        screen.getByRole('button', { name: `Move Inbox backlog ${direction}` }),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it('disables a nudge that would leave the grid', async () => {
+    lastStub = stubFetch(routes([widget('a', 'inbox.backlog', { x: 0, width: 4 })]));
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+
+    // A button that does nothing when pressed is worse than one that says it cannot.
+    expect(screen.getByRole('button', { name: 'Move Inbox backlog left' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move Inbox backlog up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move Inbox backlog right' })).not.toBeDisabled();
+  });
+
+  it('disables resizing past the grid edge', async () => {
+    lastStub = stubFetch(routes([widget('a', 'inbox.backlog', { x: 0, width: 12 })]));
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+
+    expect(screen.getByRole('button', { name: 'Widen Inbox backlog' })).toBeDisabled();
+  });
+
+  it('can make a widget taller and shorter', async () => {
+    lastStub = stubFetch(routes([widget('a', 'inbox.backlog', { width: 4, height: 2 })]));
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+    await user.click(screen.getByRole('button', { name: 'Make Inbox backlog taller' }));
+
+    await waitFor(() => {
+      const body = lastStub?.lastBody('PATCH', '/api/dashboards/d1') as
+        { widgets: Array<{ id: string; height: number }> } | undefined;
+      expect(body?.widgets.find((entry) => entry.id === 'a')?.height).toBe(3);
+    });
+  });
+
+  it('says how to move a widget when arranging', async () => {
+    lastStub = stubFetch(routes([widget('a', 'inbox.backlog')]));
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+
+    // The old copy said "Drag a widget to move it" while there was no drag at all.
+    expect(await screen.findByText(/Drag a title bar to move a widget/)).toBeInTheDocument();
+  });
+
+  /*
+   * Dragging.
+   *
+   * jsdom reports a zero-width rect for every element, so the cell measurement is
+   * stubbed here rather than worked around in the component: the component refuses to
+   * start a drag it cannot measure, which is the right behaviour in a browser tab that
+   * is not laid out yet, and it means the drag maths can be tested at all.
+   */
+  function withMeasurableGrid(): void {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 1200,
+      height: 720,
+      top: 0,
+      left: 0,
+      right: 1200,
+      bottom: 720,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+  }
+
+  function pointer(
+    type: 'pointerdown' | 'pointermove' | 'pointerup',
+    target: Element,
+    clientX: number,
+    clientY: number,
+  ): void {
+    const events = {
+      pointerdown: fireEvent.pointerDown,
+      pointermove: fireEvent.pointerMove,
+      pointerup: fireEvent.pointerUp,
+    };
+    events[type](target, { clientX, clientY, button: 0, pointerId: 1 });
+  }
+
+  it('moves a widget by dragging its title bar', async () => {
+    withMeasurableGrid();
+    lastStub = stubFetch(routes([widget('a', 'inbox.backlog', { x: 0, width: 2, height: 1 })]));
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+    const handle = await screen.findByText('Inbox backlog');
+
+    // 100px is one column of a 1200px-wide 12-column grid, so this is one cell right
+    // and one row down.
+    pointer('pointerdown', handle, 0, 0);
+    pointer('pointermove', document.body, 100, 72);
+    pointer('pointerup', document.body, 100, 72);
+
+    await waitFor(() => {
+      const body = lastStub?.lastBody('PATCH', '/api/dashboards/d1') as
+        { widgets: Array<{ id: string; x: number; y: number }> } | undefined;
+      expect(body?.widgets.find((entry) => entry.id === 'a')).toMatchObject({ x: 1, y: 1 });
+    });
+  });
+
+  it('saves once when the drag ends, not on every move', async () => {
+    withMeasurableGrid();
+    lastStub = stubFetch(routes([widget('a', 'inbox.backlog', { x: 0, width: 2, height: 1 })]));
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+    const handle = await screen.findByText('Inbox backlog');
+
+    pointer('pointerdown', handle, 0, 0);
+    pointer('pointermove', document.body, 100, 0);
+    pointer('pointermove', document.body, 200, 72);
+    pointer('pointermove', document.body, 300, 144);
+    pointer('pointerup', document.body, 300, 144);
+
+    await waitFor(() => {
+      expect(lastStub?.calls.filter((entry) => entry.method === 'PATCH').length).toBe(1);
+    });
+
+    // One gesture, one row written.
+    const body = lastStub?.lastBody('PATCH', '/api/dashboards/d1') as
+      { widgets: Array<{ id: string; x: number; y: number }> } | undefined;
+    expect(body?.widgets.find((entry) => entry.id === 'a')).toMatchObject({ x: 3, y: 2 });
+  });
+
+  it('does not drag when not arranging', async () => {
+    withMeasurableGrid();
+    lastStub = stubFetch(routes([widget('a', 'inbox.backlog')]));
+    renderApp('/dashboard');
+
+    const handle = await screen.findByText('Inbox backlog');
+    pointer('pointerdown', handle, 0, 0);
+    pointer('pointermove', document.body, 300, 144);
+    pointer('pointerup', document.body, 300, 144);
+
+    // Outside arrange mode a drag of a chart must do nothing at all: a dashboard you
+    // rearrange by accident while trying to read it is worse than no dashboard.
+    expect(lastStub?.calls.some((entry) => entry.method === 'PATCH')).toBe(false);
+  });
+
+  it('does not drag on a right-click', async () => {
+    withMeasurableGrid();
+    lastStub = stubFetch(routes([widget('a', 'inbox.backlog')]));
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+    const handle = await screen.findByText('Inbox backlog');
+
+    fireEvent.pointerDown(handle, { clientX: 0, clientY: 0, button: 2, pointerId: 1 });
+    pointer('pointermove', document.body, 300, 144);
+    pointer('pointerup', document.body, 300, 144);
+
+    // A context menu is not a drag.
+    expect(lastStub?.calls.some((entry) => entry.method === 'PATCH')).toBe(false);
   });
 
   it('offers to add a widget', async () => {
