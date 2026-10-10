@@ -191,16 +191,21 @@ describe('arranging', () => {
     expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
   });
 
-  it('lets a widget be moved without a pointer', async () => {
-    // Drag is a pointing device's affordance, and a layout only rearrangeable with a
-    // mouse is a layout some people cannot arrange at all.
+  it('lets a widget be moved with the keyboard', async () => {
+    /*
+     * The arrow *buttons* are gone — they were reported as unreliable twice and drag is
+     * what people use. But removing them without this would leave a keyboard user with
+     * no way to arrange a dashboard at all, which is a worse regression than a button
+     * that needed another fix.
+     */
     lastStub = stubFetch([
       ...routes([widget('a', 'inbox.backlog'), widget('b', 'overdue.count', { x: 4 })]),
     ]);
     const { user } = renderApp('/dashboard');
 
     await user.click(await screen.findByRole('button', { name: 'Arrange' }));
-    await user.click(screen.getByRole('button', { name: 'Move Inbox backlog right' }));
+    await user.click(screen.getByLabelText(/Inbox backlog: drag to move/));
+    await user.keyboard('{ArrowRight}');
 
     await waitFor(() => {
       expect(lastStub?.calls.some((entry) => entry.method === 'PATCH')).toBe(true);
@@ -252,7 +257,8 @@ describe('arranging', () => {
     const { user } = renderApp('/dashboard');
 
     await user.click(await screen.findByRole('button', { name: 'Arrange' }));
-    await user.click(screen.getByRole('button', { name: 'Move Inbox backlog right' }));
+    await user.click(screen.getByLabelText(/Inbox backlog: drag to move/));
+    await user.keyboard('{ArrowRight}');
 
     await waitFor(() => {
       const body = lastStub?.lastBody('PATCH', '/api/dashboards/d1') as
@@ -266,38 +272,44 @@ describe('arranging', () => {
     });
   });
 
-  it('offers all four directions', async () => {
+  it('offers no arrow buttons at all', async () => {
     lastStub = stubFetch(routes([widget('a', 'inbox.backlog')]));
     const { user } = renderApp('/dashboard');
 
     await user.click(await screen.findByRole('button', { name: 'Arrange' }));
 
-    for (const direction of ['up', 'down', 'left', 'right']) {
-      expect(
-        screen.getByRole('button', { name: `Move Inbox backlog ${direction}` }),
-      ).toBeInTheDocument();
-    }
+    // Removed on request, twice reported as unreliable. Drag is the arrangement.
+    expect(screen.queryByRole('button', { name: /^Move / })).toBeNull();
   });
 
-  it('disables a nudge that would leave the grid', async () => {
-    lastStub = stubFetch(routes([widget('a', 'inbox.backlog', { x: 0, width: 4 })]));
+  it('saves once per key press that moves something', async () => {
+    lastStub = stubFetch(routes([widget('a', 'inbox.backlog', { x: 4, width: 2, height: 2 })]));
     const { user } = renderApp('/dashboard');
 
     await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+    await user.click(screen.getByLabelText(/Inbox backlog: drag to move/));
+    await user.keyboard('{ArrowDown}');
 
-    // A button that does nothing when pressed is worse than one that says it cannot.
-    expect(screen.getByRole('button', { name: 'Move Inbox backlog left' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move Inbox backlog up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move Inbox backlog right' })).not.toBeDisabled();
+    await waitFor(() => {
+      const patches = lastStub?.calls.filter((entry) => entry.method === 'PATCH') ?? [];
+      expect(patches.length).toBe(1);
+    });
+
+    const body = lastStub?.lastBody('PATCH', '/api/dashboards/d1') as
+      { widgets: Array<{ id: string; y: number }> } | undefined;
+    expect(body?.widgets.find((entry) => entry.id === 'a')?.y).toBe(1);
   });
 
-  it('disables resizing past the grid edge', async () => {
-    lastStub = stubFetch(routes([widget('a', 'inbox.backlog', { x: 0, width: 12 })]));
+  it('ignores an arrow key that would leave the grid', async () => {
+    lastStub = stubFetch(routes([widget('a', 'inbox.backlog', { x: 0, width: 2, height: 2 })]));
     const { user } = renderApp('/dashboard');
 
     await user.click(await screen.findByRole('button', { name: 'Arrange' }));
+    await user.click(screen.getByLabelText(/Inbox backlog: drag to move/));
+    await user.keyboard('{ArrowLeft}');
 
-    expect(screen.getByRole('button', { name: 'Widen Inbox backlog' })).toBeDisabled();
+    // Already against the left edge: nothing to do, and nothing written.
+    expect(lastStub?.calls.some((entry) => entry.method === 'PATCH')).toBe(false);
   });
 
   it('can make a widget taller and shorter', async () => {
@@ -332,7 +344,8 @@ describe('arranging', () => {
     const { user } = renderApp('/dashboard');
 
     await user.click(await screen.findByRole('button', { name: 'Arrange' }));
-    await user.click(screen.getByRole('button', { name: 'Move Inbox backlog right' }));
+    await user.click(screen.getByLabelText(/Inbox backlog: drag to move/));
+    await user.keyboard('{ArrowRight}');
 
     await waitFor(() => {
       expect(lastStub?.calls.some((entry) => entry.method === 'PATCH')).toBe(true);
@@ -357,7 +370,11 @@ describe('arranging', () => {
     await user.click(await screen.findByRole('button', { name: 'Arrange' }));
 
     // The old copy said "Drag a widget to move it" while there was no drag at all.
-    expect(await screen.findByText(/Drag a title bar to move a widget/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Drag a widget by its title bar to move it/),
+    ).toBeInTheDocument();
+    // And it says the keyboard path exists, rather than leaving it undiscoverable.
+    expect(screen.getByText(/use the arrow keys/)).toBeInTheDocument();
   });
 
   /*

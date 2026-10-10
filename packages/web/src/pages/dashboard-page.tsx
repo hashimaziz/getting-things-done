@@ -50,14 +50,6 @@ import {
   type GridLayout,
   type MoveDirection,
 } from '@/lib/dashboard/layout';
-
-/** Glyphs for the four nudges. Text rather than icons so they line up with each other. */
-const ARROWS: Record<MoveDirection, string> = {
-  up: '↑',
-  down: '↓',
-  left: '←',
-  right: '→',
-};
 import type {
   Dashboard,
   DashboardWidget,
@@ -66,6 +58,14 @@ import type {
   Recommendation,
   SystemHealth,
 } from '@/lib/types';
+
+/** Arrow keys to grid directions, for nudging a focused widget. */
+const KEY_DIRECTIONS: Record<string, MoveDirection> = {
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+};
 
 interface WaitingGroup {
   personName: string;
@@ -155,13 +155,6 @@ export function DashboardPage() {
    * here is always a valid layout, so a refused nudge simply returns the layout it was
    * given and nothing is saved.
    */
-  const nudge = (current: GridLayout, id: string, direction: MoveDirection): GridLayout => ({
-    widgets: moveWidgetBy(current, id, direction).widgets,
-  });
-
-  const canNudge = (current: GridLayout, id: string, direction: MoveDirection): boolean =>
-    moveWidgetBy(current, id, direction).applied;
-
   const resize = (
     current: GridLayout,
     id: string,
@@ -290,7 +283,7 @@ export function DashboardPage() {
         title={dashboard.name}
         description={
           editing
-            ? 'Drag a title bar to move a widget, or use the arrows. Changes save as you make them.'
+            ? 'Drag a widget by its title bar to move it, or focus one and use the arrow keys. Changes save as you make them.'
             : undefined
         }
         actions={
@@ -385,6 +378,33 @@ export function DashboardPage() {
                 editing ? 'cursor-grab touch-none select-none active:cursor-grabbing' : '',
               )}
               onPointerDown={editing ? (event) => startDrag(event, widget) : undefined}
+              /*
+                Focusable, so a layout can be arranged without a pointer at all.
+
+                The on-screen arrow buttons were removed — they were reported as still
+                unreliable twice, and drag is the arrangement people actually use. But
+                dropping them without this would have left a keyboard able to do nothing
+                here, which is a worse outcome than a button that needed fixing. Arrow
+                keys nudge by one cell and swap with whatever is there.
+              */
+              {...(editing
+                ? {
+                    tabIndex: 0,
+                    role: 'button',
+                    'aria-label': `${widgetTitle(widget)}: drag to move, arrow keys to nudge`,
+                    onKeyDown: (event: React.KeyboardEvent) => {
+                      const direction = KEY_DIRECTIONS[event.key];
+                      if (direction === undefined) {
+                        return;
+                      }
+                      event.preventDefault();
+                      const result = moveWidgetBy(layout, widget.id, direction);
+                      if (result.applied) {
+                        apply({ widgets: result.widgets });
+                      }
+                    },
+                  }
+                : {})}
             >
               <h2 className="truncate text-xs font-medium">
                 {widgetTitle(widget)}
@@ -397,29 +417,6 @@ export function DashboardPage() {
 
               {editing ? (
                 <div className="flex shrink-0 items-center gap-1">
-                  {/*
-                    Movement is by button as well as by drag.
-
-                    The buttons swap with the neighbour in that direction rather than
-                    shoving it onto the next row, which is what they used to do: five
-                    presses of the right arrow moved a widget one cell and rearranged
-                    half the dashboard. A press means "put it over there", so that is
-                    what it does. Drag still pushes, because a drag is a placement and
-                    the person can see where it is going.
-                  */}
-                  {(['up', 'down', 'left', 'right'] as const).map((direction) => (
-                    <Button
-                      key={direction}
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Move ${widgetTitle(widget)} ${direction}`}
-                      disabled={!canNudge(layout, widget.id, direction)}
-                      onClick={() => apply(nudge(layout, widget.id, direction))}
-                    >
-                      {ARROWS[direction]}
-                    </Button>
-                  ))}
-
                   <Button
                     size="sm"
                     variant="ghost"
