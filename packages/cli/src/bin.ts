@@ -10,7 +10,14 @@
  */
 
 import { createItemFieldResolver, isContainer, type FilterNode } from '@gtd/core';
-import { WIPE_CONFIRMATION, bootstrap, createRepositories, wipeAllData, type Db } from '@gtd/db';
+import {
+  WIPE_CONFIRMATION,
+  bootstrap,
+  createRepositories,
+  previewWipe,
+  wipeAllData,
+  type Db,
+} from '@gtd/db';
 import { pathToFileURL } from 'node:url';
 
 export interface CliOptions {
@@ -28,6 +35,8 @@ interface ParsedArgs {
   container?: string;
   limit: number;
   confirm?: string;
+  /** `reset` only: report what would be removed, and remove nothing. */
+  preview: boolean;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -163,7 +172,20 @@ function execute(
       return repos.items.restore(requireArg(parsed, 0, 'item id'));
     case 'reset': {
       /*
-       * The same confirmation phrase the web application requires. A CLI that wipes
+       * The preview is the point of this command existing separately from the web
+       * screen. A terminal is where someone runs a command to find out what is there,
+       * and "412 items" is a different decision from "reset".
+       */
+      if (parsed.preview) {
+        const tables = previewWipe(db);
+        return {
+          wouldRemove: tables.reduce((sum, entry) => sum + entry.rows, 0),
+          tables: tables.filter((entry) => entry.rows > 0),
+        };
+      }
+
+      /*
+       * The same confirmation phrase the web application requires. A CLI that wiped
        * everything without one would be a way to destroy a week of data by mistyping a
        * command, and the two entry points should not disagree about what is safe.
        */
@@ -200,12 +222,20 @@ function parseArgs(argv: string[]): ParsedArgs {
   let category: string | undefined;
   let container: string | undefined;
   let confirm: string | undefined;
+  let preview = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] as string;
 
     if (arg === '--json') {
       json = true;
+      continue;
+    }
+
+    // A flag with no value, so it cannot swallow the argument after it the way
+    // `--confirm` does when the phrase is left off.
+    if (arg === '--preview') {
+      preview = true;
       continue;
     }
 
@@ -243,6 +273,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     args: positional.slice(1),
     json,
     limit,
+    preview,
     ...(category === undefined ? {} : { category }),
     ...(container === undefined ? {} : { container }),
     ...(confirm === undefined ? {} : { confirm }),
@@ -303,7 +334,7 @@ function isListResult(value: unknown): value is { items: CliItem[]; total: numbe
 }
 
 function helpText(): string {
-  return `GTD headless CLI\n\nUsage:\n  gtd capture <text> [--category <key>] [--json]\n  gtd list [container] [--json]\n  gtd show <id> [--json]\n  gtd move <id> <container> [--json]\n  gtd complete|reopen|trash|restore <id> [--json]\n  gtd reset --confirm "${WIPE_CONFIRMATION}"\n\nFlags: --json, --limit <n>, --category <key>, --container <name>, --confirm <phrase>\n\nCapture always creates an inbox item; clarification remains a separate decision.\n`;
+  return `GTD headless CLI\n\nUsage:\n  gtd capture <text> [--category <key>] [--json]\n  gtd list [container] [--json]\n  gtd show <id> [--json]\n  gtd move <id> <container> [--json]\n  gtd complete|reopen|trash|restore <id> [--json]\n  gtd reset --preview\n  gtd reset --confirm "${WIPE_CONFIRMATION}"\n\nFlags: --json, --limit <n>, --category <key>, --container <name>, --preview, --confirm <phrase>\n\nCapture always creates an inbox item; clarification remains a separate decision.\n`;
 }
 
 /**

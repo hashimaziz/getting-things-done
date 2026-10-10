@@ -60,6 +60,21 @@ no change. `test/harness.test.ts` guards the arrangement and fails if the alias 
 removed.
 
 
+## CLI
+
+```bash
+pnpm build
+node packages/cli/dist/bin.js capture "buy milk"
+node packages/cli/dist/bin.js list inbox
+node packages/cli/dist/bin.js reset --preview
+node packages/cli/dist/bin.js reset --confirm "WIPE EVERYTHING"
+```
+
+`reset` empties every table of user data, including all settings, and leaves the schema
+and migrations intact — the app comes back as first-run, with the setup wizard waiting.
+`--preview` reports what would go without touching anything, and needs no confirmation
+phrase precisely because it changes nothing. The actual wipe requires the phrase in full.
+
 ## Data
 
 SQLite lives in `$GTD_HOME` (default `~/.gtd`). WAL mode is enabled so the CLI and a

@@ -375,6 +375,38 @@ describe('argument errors', () => {
 });
 
 describe('reset', () => {
+  it('previews what it would remove, and removes nothing', async () => {
+    captureOne();
+
+    expect(await cli('reset', '--preview', '--json')).toBe(0);
+
+    const report = JSON.parse(output());
+    expect(report.wouldRemove).toBeGreaterThan(0);
+    // Only the tables that actually hold something: a list of twelve zeroes is a
+    // table of noise in front of the one number that matters.
+    expect(report.tables.every((entry: { rows: number }) => entry.rows > 0)).toBe(true);
+    expect(report.tables.find((entry: { table: string }) => entry.table === 'items').rows).toBe(1);
+
+    expect(inboxItems()).toHaveLength(1);
+    expect(withDb((repos) => repos.categories.list())).toHaveLength(1);
+  });
+
+  it('needs no confirmation to preview, because it changes nothing', async () => {
+    captureOne();
+
+    expect(await cli('reset', '--preview')).toBe(0);
+    expect(inboxItems()).toHaveLength(1);
+  });
+
+  it('still refuses to wipe when preview and confirm are given together', async () => {
+    // `--preview` wins rather than being ignored, so a script that meant to look
+    // cannot destroy a database on the way past.
+    captureOne();
+
+    expect(await cli('reset', '--preview', '--confirm', 'WIPE EVERYTHING')).toBe(0);
+    expect(inboxItems()).toHaveLength(1);
+  });
+
   it('refuses without the confirmation phrase', async () => {
     captureOne();
 
