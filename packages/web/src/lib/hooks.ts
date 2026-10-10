@@ -93,7 +93,20 @@ export function useStatus() {
   return useQuery({
     queryKey: keys.setupStatus,
     queryFn: () => apiFetch.get<AppStatus>('/status'),
-    retry: false,
+    /*
+     * Retried, unlike the other startup queries.
+     *
+     * `pnpm dev` builds the packages before starting anything, so the API is routinely
+     * still booting when the browser's first request arrives. With no retry, that one
+     * refused connection was read as "setup has not run" and the wizard opened over a
+     * fully configured app — with a refetch suppressed, it stayed there until the tab
+     * was closed.
+     *
+     * Bounded, because an API that is genuinely down should stop being asked and
+     * should say so instead of retrying forever.
+     */
+    retry: 3,
+    retryDelay: (attempt) => Math.min(250 * 2 ** attempt, 2_000),
     refetchOnMount: false,
     staleTime: 60_000,
     retryOnMount: false,
