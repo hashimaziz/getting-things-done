@@ -1,5 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { renderApp } from '@/test/render';
 import { healthPayload, stubFetch } from '@/test/fetch-stub';
 
@@ -42,6 +42,21 @@ const STATUS_SET_UP = {
 async function findNavLink(name: string | RegExp): Promise<HTMLElement> {
   return screen.findByRole('link', { name });
 }
+
+/**
+ * A narrow window.
+ *
+ * jsdom has one viewport and it never changes on its own, so a test that needs a
+ * phone sets the width and re-renders. Tests are otherwise shaped as a desktop,
+ * because that is the layout where the sidebar is permanent and a mistake there is
+ * the one nobody would notice in a screenshot.
+ */
+function setWindowWidth(width: number): void {
+  (window as unknown as { innerWidth: number }).innerWidth = width;
+}
+
+const DESKTOP = 1280;
+const PHONE = 480;
 
 describe('the shell', () => {
   it('renders the navigation', async () => {
@@ -180,5 +195,120 @@ describe('the shell', () => {
     // than throwing, which means the shell is wired up.
     await screen.findByRole('heading', { name: 'Page not found' });
     expect(stub.calls.every((call) => call.path.startsWith('/api/'))).toBe(true);
+  });
+});
+
+/*
+ * The sidebar on a narrow screen.
+ *
+ * These are the tests for the drawer, and they exist because the drawer had no way out.
+ * It was painted over the top bar at a higher layer, so the toggle that opened it was
+ * underneath the thing it opened, and following a link changed the screen behind it
+ * without moving it. Every way of dismissing a drawer is asserted here, because any
+ * one of them being absent is a screen the user cannot leave.
+ */
+describe('the sidebar drawer', () => {
+  beforeEach(() => {
+    setWindowWidth(PHONE);
+  });
+
+  it('is closed until asked for', async () => {
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
+    renderApp('/dashboard');
+
+    const toggle = await screen.findByRole('button', { name: 'Open navigation' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
+  });
+
+  it('opens and closes from the same button', async () => {
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Open navigation' }));
+    expect(await screen.findByRole('navigation', { name: 'Main' })).toBeInTheDocument();
+
+    // The control is still reachable while the drawer is open. It was painted over
+    // before, which is what made the drawer a one-way door.
+    const close = screen.getByRole('button', { name: 'Close navigation' });
+    expect(close).toHaveAttribute('aria-expanded', 'true');
+    await user.click(close);
+
+    expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
+  });
+
+  it('closes when a destination is chosen, so the screen is not hidden behind it', async () => {
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Open navigation' }));
+    await user.click(await findNavLink(/Inbox/));
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Inbox' })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
+  });
+
+  it('closes on Escape', async () => {
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Open navigation' }));
+    await screen.findByRole('navigation', { name: 'Main' });
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
+  });
+
+  it('closes when the area beside it is tapped', async () => {
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
+    const { user } = renderApp('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: 'Open navigation' }));
+    const drawer = await screen.findByRole('navigation', { name: 'Main' });
+
+    // The scrim, which is the parent of the drawer rather than the drawer itself.
+    const scrim = drawer.parentElement?.previousElementSibling;
+    expect(scrim).not.toBeNull();
+    await user.click(scrim as HTMLElement);
+
+    expect(screen.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
+  });
+
+  it('points the button at the drawer it controls', async () => {
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
+    renderApp('/dashboard');
+
+    const toggle = await screen.findByRole('button', { name: 'Open navigation' });
+    expect(toggle.getAttribute('aria-controls')).toBe('app-sidebar');
+  });
+});
+
+/*
+ * The sidebar on a wide screen.
+ *
+ * Navigation that has to be summoned on a screen with room for it is one more click
+ * on every visit, and the toggle that summoned it had nothing to close.
+ */
+describe('the sidebar on a wide screen', () => {
+  beforeEach(() => {
+    setWindowWidth(DESKTOP);
+  });
+
+  it('is present without being asked for', async () => {
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
+    renderApp('/dashboard');
+
+    expect(await screen.findByRole('navigation', { name: 'Main' })).toBeInTheDocument();
+  });
+
+  it('offers no toggle, because there is nothing to open', async () => {
+    stubFetch([STATUS_SET_UP, ...baseRoutes()]);
+    renderApp('/dashboard');
+
+    await screen.findByRole('navigation', { name: 'Main' });
+    expect(screen.queryByRole('button', { name: /navigation/ })).not.toBeInTheDocument();
   });
 });

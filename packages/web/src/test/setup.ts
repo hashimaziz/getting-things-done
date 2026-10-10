@@ -38,17 +38,30 @@ function patchRequest(): void {
   vi.stubGlobal('Request', EnvironmentTolerantRequest);
 }
 
-/** jsdom has no `matchMedia`. The theme code calls it whenever the preference is `system`. */
+/**
+ * jsdom has no `matchMedia`, and the two callers need different answers.
+ *
+ * A width query answers from `window.innerWidth`, which is settable in jsdom, so a
+ * test can choose whether it is on a desktop or a phone by saying so. Everything
+ * else — colour scheme, pointer type — answers false, which is the light, mouse,
+ * no-preference end: the conservative answer, because these tests are about behaviour
+ * and not about the appearance of the thing being tested.
+ */
 function patchMatchMedia(): void {
   vi.stubGlobal(
     'matchMedia',
-    vi.fn((query: string) => ({
-      matches: false,
-      media: query,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
+    vi.fn((query: string) => {
+      const width = /min-width:\s*(\d+)px/.exec(query);
+      const matches = width === null ? false : window.innerWidth >= Number(width[1]);
+
+      return {
+        matches,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      };
+    }),
   );
 }
 

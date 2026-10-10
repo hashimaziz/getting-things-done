@@ -7,9 +7,10 @@
  */
 
 import { useDocumentTitle } from '@/lib/document-title';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { findNavItem } from '@/lib/navigation';
+import { useMediaQuery, WIDE_SCREEN_QUERY } from '@/lib/media-query';
 import { CommandPalette, useCommandPalette } from '@/components/command-palette';
 import { useLoadShortcuts, useShellShortcuts } from '@/components/use-shell-shortcuts';
 import { Sidebar } from './sidebar';
@@ -24,12 +25,62 @@ function RouteTitle() {
 }
 
 export function AppShell() {
-  // Mobile: the sidebar is hidden behind a toggle. Desktop it is always present.
-  // This is state in the shell rather than a media query in CSS because the toggle
-  // button lives in the top bar and has to know whether it is closing an open
-  // sidebar.
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  /*
+   * Two sidebars, not one that resizes.
+   *
+   * Wide: a permanent column, no toggle, because navigation that has to be summoned
+   * on a screen with room for it is worse than useless. Narrow: a drawer over the
+   * content, with a scrim, Escape, and closing on navigation.
+   *
+   * The earlier version hid the sidebar behind the toggle at every width, so a desktop
+   * user lost navigation entirely and could only get it back through the one control
+   * the open sidebar covered.
+   */
+  const isWide = useMediaQuery(WIDE_SCREEN_QUERY);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const closeDrawer = (): void => setDrawerOpen(false);
   const palette = useCommandPalette();
+
+  /*
+   * Escape closes the drawer.
+   *
+   * A drawer that can only be dismissed by clicking the one control it covers is a
+   * trap: the toggle sits in the top bar, and the open sidebar is painted over it at
+   * a higher layer, so the way out is under the thing you opened. Escape is what
+   * people reach for, and it costs one listener.
+   *
+   * Registered only while it is open, so the shell has no global key handler of its
+   * own for the other 99% of the time.
+   */
+  useEffect(() => {
+    if (!drawerOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        closeDrawer();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [drawerOpen]);
+
+  /*
+   * Widening the window while the drawer is open would leave it open over the layout
+   * that has a permanent sidebar, so the same sidebar is drawn twice. Closing it on
+   * the way across is the whole fix, and it is a state change rather than an effect
+   * that reads and compares.
+   */
+  const [wasWide, setWasWide] = useState(isWide);
+  if (isWide !== wasWide) {
+    // Adjusted during render, which is React's supported way to react to a changed
+    // input: the component re-renders before anything is committed, so no user ever
+    // sees the double sidebar this exists to prevent.
+    setWasWide(isWide);
+    if (isWide) {
+      setDrawerOpen(false);
+    }
+  }
 
   const bindings = useLoadShortcuts();
   useShellShortcuts(bindings, palette.toggle);
@@ -38,13 +89,31 @@ export function AppShell() {
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       <RouteTitle />
       <CommandPalette open={palette.open} onOpenChange={palette.setOpen} />
-      <div className={sidebarOpen ? 'absolute inset-y-0 left-0 z-30' : 'hidden'}>
-        <Sidebar />
-      </div>
+      {isWide ? <Sidebar /> : null}
+
+      {/*
+        A drawer, not a panel: painted over the content it stands in for and dismissed
+        by the scrim, by Escape, by the toggle, or by following a link. The scrim is
+        what makes "tap away to close" real — without it there is nowhere away to tap.
+      */}
+      {!isWide && drawerOpen ? (
+        <>
+          <div
+            className="absolute inset-0 z-30 bg-foreground/20"
+            onClick={closeDrawer}
+            aria-hidden
+          />
+          <div className="absolute inset-y-0 left-0 z-40 flex shadow-lg">
+            <Sidebar onNavigate={closeDrawer} />
+          </div>
+        </>
+      ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
-          onToggleSidebar={() => setSidebarOpen((open) => !open)}
+          onToggleSidebar={() => setDrawerOpen((open) => !open)}
+          sidebarOpen={drawerOpen}
+          sidebarToggleable={!isWide}
           onOpenPalette={palette.toggle}
         />
         <main className="min-h-0 flex-1 overflow-y-auto">

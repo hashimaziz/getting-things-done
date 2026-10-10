@@ -60,7 +60,12 @@ const ICONS: Record<string, LucideIcon> = {
   trash: Trash2,
 };
 
-export function Sidebar() {
+/**
+ * @param onNavigate Called after a link is followed. On a narrow screen the sidebar
+ * covers the content it navigates to, so leaving it open hides the screen the user
+ * just asked for.
+ */
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { data: health } = useHealth();
 
   const countFor = (container: string): number | null => {
@@ -81,6 +86,7 @@ export function Sidebar() {
 
   return (
     <nav
+      id="app-sidebar"
       aria-label="Main"
       className="flex h-full w-56 shrink-0 flex-col overflow-y-auto border-r bg-card px-2 py-3"
     >
@@ -104,6 +110,7 @@ export function Sidebar() {
                   <NavLink
                     to={item.to}
                     end={item.endMatch ?? false}
+                    onClick={onNavigate}
                     className={({ isActive }) =>
                       cn(
                         'flex items-center gap-2 rounded-md px-2 py-1.5 text-[0.8125rem] transition-colors',

@@ -16,9 +16,15 @@ import { detectPlatform, formatBinding, DEFAULT_BINDINGS } from '@/shortcuts/reg
 
 export function TopBar({
   onToggleSidebar,
+  sidebarOpen,
+  sidebarToggleable,
   onOpenPalette,
 }: {
   onToggleSidebar: () => void;
+  /** Whether the drawer is open, so the button can say so and the drawer can be found. */
+  sidebarOpen: boolean;
+  /** False on a wide screen, where the sidebar is permanent and there is nothing to open. */
+  sidebarToggleable: boolean;
   onOpenPalette: () => void;
 }) {
   const { theme, toggle } = useTheme();
@@ -31,14 +37,24 @@ export function TopBar({
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={onToggleSidebar}
-        aria-label="Toggle navigation"
-      >
-        <PanelLeft />
-      </Button>
+      {/*
+        `aria-expanded` and `aria-controls` rather than a label that swaps between
+        "Show" and "Hide": the control is one button that does both, and saying which
+        one it currently is what a screen reader user needs to decide whether to press
+        it.
+      */}
+      {sidebarToggleable ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onToggleSidebar}
+          aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
+          aria-expanded={sidebarOpen}
+          aria-controls="app-sidebar"
+        >
+          <PanelLeft />
+        </Button>
+      ) : null}
 
       {/*
         Overdue is the one number worth surfacing globally. It is the only state that
